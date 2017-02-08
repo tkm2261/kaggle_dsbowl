@@ -1,5 +1,5 @@
 
-from utils import load_scan,get_pixels_hu, resample
+from utils import load_scan, get_pixels_hu, resample
 
 import os
 import sys
@@ -12,14 +12,14 @@ from cntk.io import MinibatchSource, ImageDeserializer, StreamDef, StreamDefs
 from skimage.exposure import equalize_hist
 from skimage.transform import resize
 
-MODEL_PATH='data/ResNet_152.model'
+MODEL_PATH = 'model/ResNet_152.model'
 logger = getLogger(__name__)
 
 EXPERIMENT_NUMBER = '0001'
 
-DATA_PATH = 'data/'
-STAGE1_FOLDER = DATA_PATH + 'stage1/'
-FEATURE_FOLDER=DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
+DATA_PATH = '../../'
+STAGE1_FOLDER = DATA_PATH + 'stage1/stage1/'
+FEATURE_FOLDER = DATA_PATH + 'features/'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
 
 
 def get_extractor():
@@ -75,6 +75,7 @@ def calc_features():
     and save them as numpy arrays.
 
     """
+    print('hoge')
     logger.info("Compute features")
     net = get_extractor()
     for folder in glob.glob(STAGE1_FOLDER + '*'):
@@ -82,7 +83,7 @@ def calc_features():
         logger.info(patient_id)
         patient_data = load_scan(folder)
         patient_pixels = get_pixels_hu(patient_data)
-        pix_resampled, spacing = resample(patient_pixels, patient_id, [1, 1, 1])
+        pix_resampled, spacing = resample(patient_pixels, patient_data, [1, 1, 1])
 
         batch = get_data_id(pix_resampled)
         logger.info("Batch size: {}".format(batch.shape))
@@ -101,6 +102,3 @@ if __name__ == '__main__':
                         datefmt='%Y-%m-%d/%H:%M:%S',
                         level='INFO')
     calc_features()
-
-
-
