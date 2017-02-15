@@ -1,104 +1,54 @@
 
-from utils import load_scan, get_pixels_hu, resample
-
 import os
-import sys
-import glob
-import numpy as np
 from logging import getLogger
-from cntk import load_model
-from cntk.ops import combine
-from cntk.io import MinibatchSource, ImageDeserializer, StreamDef, StreamDefs
-from skimage.exposure import equalize_hist
-from skimage.transform import resize
+import pandas as pd
+import numpy as np
+import pickle
+from sklearn import cross_validation
+from sklearn.metrics import log_loss
+from sklearn.model_selection import GridSearchCV, ParameterGrid
 
-MODEL_PATH = 'model/ResNet_152.model'
-logger = getLogger(__name__)
-
-EXPERIMENT_NUMBER = '0001'
+from lightgbm.sklearn import LGBMClassifier
 
 DATA_PATH = '../../'
-STAGE1_FOLDER = DATA_PATH + 'stage1/stage1/'
-FEATURE_FOLDER = DATA_PATH + 'features/'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
+STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
+STAGE1_SAMPLE_SUBMISSION = DATA_PATH + 'stage1_sample_submission.csv'
+FEATURE_FOLDER = DATA_PATH + 'features_20170205_first/'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
+IDX = [0, 1, 4, 13, 14, 24, 27, 28, 33, 35, 37, 42, 46]
+logger = getLogger(__name__)
 
 
-def get_extractor():
-    """Load the CNN."""
-    node_name = "z.x"
-    loaded_model = load_model(MODEL_PATH)
-    node_in_graph = loaded_model.find_by_name(node_name)
-    output_nodes = combine([node_in_graph.owner])
+def compute_prediction(clf, verbose=True):
+    """Wrapper function to perform the prediction."""
 
-    return output_nodes
+    df = pd.read_csv(STAGE1_SAMPLE_SUBMISSION)
+    # x = np.array([np.mean(np.load(os.path.join(FEATURE_FOLDER, '%s.npy' % str(id))), axis=0).flatten()
+    #              for id in df['id'].tolist()])
 
+    x = np.array([np.load(os.path.join(FEATURE_FOLDER, '%s.npy' % str(id)))[IDX].flatten()
+                  for id in df['id'].tolist()])
 
-def get_data_id(data):
-    """Convert the images in the format accepted by the network trained on ImageNet, packing the
-    images in groups of 3 gray images with size of 224x224 and performing some operations.
+    pred = clf.predict_proba(x)[:, 1]
+    df['cancer'] = pred
+    return df
 
-    """
-    sample_image = data
-    sample_image[sample_image == -2000] = 0
-    batch = []
+if __name__ == "__main__":
+    from logging import StreamHandler, DEBUG, Formatter, FileHandler
 
-    for i in range(0, sample_image.shape[0] - 3, 3):
-        tmp = []
-        for j in range(3):
-            img = sample_image[i + j]
-            img = 255.0 / np.amax(img) * img
-            img = equalize_hist(img.astype(np.uint8))
-            img = resize(img, (224, 224))
-            tmp.append(img)
+    log_fmt = Formatter('%(asctime)s %(name)s %(lineno)d [%(levelname)s][%(funcName)s] %(message)s ')
+    handler = FileHandler('hoge.log', 'w')
+    handler.setLevel(DEBUG)
+    handler.setFormatter(log_fmt)
+    logger.setLevel(DEBUG)
+    logger.addHandler(handler)
 
-        tmp = np.array(tmp)
-        batch.append(np.array(tmp))
+    handler = StreamHandler()
+    handler.setLevel(DEBUG)
+    handler.setFormatter(log_fmt)
+    logger.setLevel(DEBUG)
+    logger.addHandler(handler)
 
-    batch = np.array(batch, dtype='int')
-    return batch
-
-
-def batch_evaluation(model, data, batch_size=50):
-    """Evaluation of the data in batches too avoid consuming too much memory"""
-    num_items = data.shape[0]
-    chunks = np.ceil(num_items / batch_size)
-    data_chunks = np.array_split(data, chunks, axis=0)
-    feat_list = []
-    for d in data_chunks:
-        feat = model.eval(d)
-        feat_list.append(feat)
-    feats = np.concatenate(feat_list, axis=0)
-    return feats
-
-
-def calc_features():
-    """Execute the forward propagation on the images to obtain the features
-    and save them as numpy arrays.
-
-    """
-    print('hoge')
-    logger.info("Compute features")
-    net = get_extractor()
-    for folder in glob.glob(STAGE1_FOLDER + '*'):
-        patient_id = os.path.basename(folder)
-        logger.info(patient_id)
-        patient_data = load_scan(folder)
-        patient_pixels = get_pixels_hu(patient_data)
-        pix_resampled, spacing = resample(patient_pixels, patient_data, [1, 1, 1])
-
-        batch = get_data_id(pix_resampled)
-        logger.info("Batch size: {}".format(batch.shape))
-
-        feats = batch_evaluation(net, batch, 50)
-        logger.info("Feats size: {}".format(feats.shape))
-
-        logger.info("Saving features in %s" % (FEATURE_FOLDER + patient_id))
-        np.save(FEATURE_FOLDER + patient_id, feats)
-
-
-if __name__ == '__main__':
-    import logging
-    log_fmt = '%(asctime)s %(name)s %(lineno)d [%(levelname)s][%(funcName)s] %(message)s '
-    logging.basicConfig(format=log_fmt,
-                        datefmt='%Y-%m-%d/%H:%M:%S',
-                        level='INFO')
-    calc_features()
+    with open('model.pkl', 'rb') as f:
+        clf = pickle.load(f)
+    df = compute_prediction(clf)
+    df.to_csv('submit.csv', index=False)

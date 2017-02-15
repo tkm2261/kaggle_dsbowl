@@ -27,6 +27,9 @@ def load_scan(path):
     except:
         slice_thickness = np.abs(slices[0].SliceLocation - slices[1].SliceLocation)
 
+    if slice_thickness == 0:
+        slice_thickness = np.abs(slices[5].ImagePositionPatient[2] - slices[6].ImagePositionPatient[2])
+
     for s in slices:
         s.SliceThickness = slice_thickness
 
