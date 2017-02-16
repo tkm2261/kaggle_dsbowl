@@ -9,6 +9,7 @@ from sklearn.metrics import log_loss
 from sklearn.model_selection import GridSearchCV, ParameterGrid
 
 from lightgbm.sklearn import LGBMClassifier
+from features import FEATURE
 
 DATA_PATH = '../../'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
@@ -22,7 +23,9 @@ def compute_prediction(clf, verbose=True):
     """Wrapper function to perform the prediction."""
 
     df = pd.read_csv(STAGE1_SAMPLE_SUBMISSION)
-    x = np.array([np.mean(np.load(FEATURE_FOLDER + '/%s.npy' % str(id)), axis=0) for id in df['id'].tolist()])
+    #x = np.array([np.mean(np.load(FEATURE_FOLDER + '/%s.npy' % str(id)), axis=0) for id in df['id'].tolist()])
+    x = np.array([np.load(FEATURE_FOLDER + '/%s.npy' % str(id))[:30].flatten()
+                  for id in df['id'].tolist()])[:, FEATURE]
 
     pred = clf.predict_proba(x)[:, 1]
     df['cancer'] = pred

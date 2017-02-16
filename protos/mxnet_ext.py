@@ -16,14 +16,14 @@ from skimage.transform import resize
 import cv2
 import mxnet as mx
 
-MODEL_PATH = 'model/resnet-50'
+MODEL_PATH = 'model/resnet-152'
 logger = getLogger(__name__)
 
 EXPERIMENT_NUMBER = '0001'
 
 DATA_PATH = '../../'
 STAGE1_FOLDER = DATA_PATH + 'stage1/stage1/'
-FEATURE_FOLDER = DATA_PATH + 'features/'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
+FEATURE_FOLDER = DATA_PATH + 'features_20170216_resnet152/'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
 
 
 def get_extractor():
@@ -39,7 +39,11 @@ def get_extractor():
 def get_3d_data(path):
     slices = [dicom.read_file(path + '/' + s) for s in os.listdir(path)]
     slices.sort(key=lambda x: int(x.InstanceNumber))
-    return np.stack([s.pixel_array for s in slices])
+    img = np.stack([s.pixel_array for s in slices])
+
+    #img = zero_center(img)
+    #img = normalize(img)
+    return img
 
 
 def get_data_id(path):
