@@ -12,7 +12,9 @@ from lightgbm.sklearn import LGBMClassifier
 
 DATA_PATH = '../../'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
-FEATURE_FOLDER = DATA_PATH + 'features_20170215_improve/'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
+FEATURE_FOLDER = DATA_PATH + 'features_20170215_mxnet/'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
+# DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
+FEATURE_FOLDER_2 = DATA_PATH + 'features_20170216_resnet152/'
 
 logger = getLogger(__name__)
 
@@ -50,11 +52,13 @@ def train_lightgbm(verbose=True):
         dt = np.load(FEATURE_FOLDER + '/%s.npy' % str(id))
         dt = np.r_[np.mean(dt, axis=0), np.max(dt, axis=0), np.min(dt, axis=0), np.var(dt, axis=0)]
         data.append(dt)
-    x = np.array(data)[:, FEATURE]
+    x = np.array(data)  # [:, FEATURE]
     """
     x = np.array([np.r_[np.mean(np.load(FEATURE_FOLDER + '/%s.npy' % str(id)), axis=0)]
                   for id in df['id'].tolist()])
-
+    x2 = np.array([np.r_[np.mean(np.load(FEATURE_FOLDER_2 + '/%s.npy' % str(id)), axis=0)]
+                   for id in df['id'].tolist()])
+    x = np.c_[x, x2]
     # x = np.array([np.load(FEATURE_FOLDER + '/%s.npy' % str(id))[:30].flatten()
     #              for id in df['id'].tolist()])[:, FEATURE]
     y = df['cancer'].as_matrix()
@@ -70,25 +74,16 @@ def train_lightgbm(verbose=True):
                   'colsample_bytree': [0.5, 0.6],
                   'boosting_type': ['gbdt'],
                   #'num_leaves': [2, 3],
-                  'reg_alpha': [0.1, 0, 1],
-                  'reg_lambda': [0.1, 0, 1],
-                  'is_unbalance': [True, False],
-                  'subsample_freq': [1, 3],
+                  #'reg_alpha': [0.1, 0, 1],
+                  #'reg_lambda': [0.1, 0, 1],
+                  #'is_unbalance': [True, False],
+                  #'subsample_freq': [1, 3],
                   'seed': [2261]
                   }
     min_score = 100
     min_params = None
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
     for params in ParameterGrid(all_params):
-        # 2017-02-15 16:43:14,599 __main__ 100 [INFO][train_lightgbm] best score: 0.478122718392
-        # 2017-02-15 16:43:14,599 __main__ 101 [INFO][train_lightgbm] best_param:
-        # {'reg_lambda': 0, 'boosting_type': 'gbdt', 'reg_alpha': 0,
-        # 'n_estimators': 11, 'min_child_weight': 0, 'colsample_bytree': 0.5,
-        # 'max_depth': 3, 'subsample': 1, 'seed': 2261, 'is_unbalance': False,
-        # 'learning_rate': 0.2, 'num_leaves': 2, 'subsample_freq': 1}
-
-        # params = {'min_child_weight': 0, 'num_leaves': 10, 'learning_rate': 0.06, 'subsample': 0.99,
-        #          'max_depth': 5, 'boosting_type': 'gbdt', 'seed': 2261, 'colsample_bytree': 0.5, 'n_estimators': 1500}
         list_score = []
         for train, test in cv.split(x, y):
             trn_x = x[train]
