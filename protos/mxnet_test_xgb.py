@@ -29,12 +29,12 @@ def compute_prediction(clf, verbose=True):
     #              for id in df['id'].tolist()])[:, FEATURE]
     x = np.array([np.r_[np.mean(np.load(FEATURE_FOLDER + '/%s.npy' % str(id)), axis=0)]
                   for id in df['id'].tolist()])
-
+    """
     x2 = np.array([np.r_[np.mean(np.load(FEATURE_FOLDER_2 + '/%s.npy' % str(id)), axis=0)]
                    for id in df['id'].tolist()])
     x = np.c_[x, x2]
-
-    pred = clf.predict_proba(x)[:, 1]
+    """
+    pred = clf.predict(x)
     df['cancer'] = pred
     return df
 

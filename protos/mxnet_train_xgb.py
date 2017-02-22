@@ -21,27 +21,6 @@ logger = getLogger(__name__)
 from features import FEATURE
 
 
-def train_xgboost():
-    df = pd.read_csv(STAGE1_LABELS)
-    x = np.array([np.mean(np.load(FEATURE_FOLDER + '/%s.npy' % str(id)), axis=0) for id in df['id'].tolist()])
-    y = df['cancer'].as_matrix()
-
-    trn_x, val_x, trn_y, val_y = cross_validation.train_test_split(x, y, random_state=42, stratify=y,
-                                                                   test_size=0.20)
-
-    clf = xgb.XGBRegressor(max_depth=10,
-                           n_estimators=1500,
-                           min_child_weight=9,
-                           learning_rate=0.05,
-                           nthread=8,
-                           subsample=0.80,
-                           colsample_bytree=0.80,
-                           seed=4242)
-
-    clf.fit(trn_x, trn_y, eval_set=[(val_x, val_y)], verbose=True, eval_metric='logloss', early_stopping_rounds=50)
-    return clf
-
-
 def train_lightgbm(verbose=True):
     """Train a boosted tree with LightGBM."""
     logger.info("Training with LightGBM")
@@ -68,19 +47,15 @@ def train_lightgbm(verbose=True):
                                                                    test_size=0.20)
     """
     all_params = {'max_depth': [3, 5, 10],
-                  'learning_rate': [0.06, 0.1, 0.2],
                   'n_estimators': [1500],
-                  'min_child_weight': [0],
-                  'subsample': [1],
-                  'colsample_bytree': [0.5, 0.6],
-                  'boosting_type': ['gbdt'],
-                  #'num_leaves': [2, 3],
-                  #'reg_alpha': [0.1, 0, 1],
-                  #'reg_lambda': [0.1, 0, 1],
-                  #'is_unbalance': [True, False],
-                  #'subsample_freq': [1, 3],
+                  'learning_rate': [0.01, 0.1, 0.06],
+                  'min_child_weight': [0.01, 0.1, 1],
+                  'subsample': [0.1, 0.5, 1],
+                  'colsample_bytree': [0.3, 0.5, 1],
+                  'colsample_bylevel': [0.3, 0.5, 1],
                   'seed': [2261]
                   }
+
     min_score = 100
     min_params = None
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=871)
@@ -92,14 +67,15 @@ def train_lightgbm(verbose=True):
             trn_y = y[train]
             val_y = y[test]
 
-            clf = LGBMClassifier(**params)
+            clf = xgb.XGBRegressor(**params)
+
             clf.fit(trn_x, trn_y,
                     eval_set=[(val_x, val_y)],
                     verbose=verbose,
                     # eval_metric=log_loss,
                     early_stopping_rounds=300
                     )
-            _score = log_loss(val_y, clf.predict_proba(val_x)[:, 1])
+            _score = log_loss(val_y, clf.predict(val_x, ntree_limit=clf.best_iteration))
             #logger.debug('   _score: %s' % _score)
             list_score.append(_score)
         score = np.max(list_score)
@@ -117,7 +93,7 @@ def train_lightgbm(verbose=True):
     # with open('features.py', 'a') as f:
     #    f.write('FEATURE = [' + ','.join(map(str, imp[imp['imp'] > 0].index.values)) + ']\n')
 
-    clf = LGBMClassifier(**min_params)
+    clf = xgb.XGBRegressor(**params)
     clf.fit(x, y)
 
     return clf
