@@ -12,9 +12,12 @@ from lightgbm.sklearn import LGBMClassifier
 
 DATA_PATH = '../../'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
-FEATURE_FOLDER = DATA_PATH + 'features_20170215_mxnet/'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
+
+FEATURE_FOLDER = DATA_PATH + 'features_20170215_mxnet'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
+FEATURE_FOLDER_2 = DATA_PATH + 'features_20170224_pixcel_cnt'
+
 # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
-FEATURE_FOLDER_2 = DATA_PATH + 'features_20170216_resnet152/'
+# FEATURE_FOLDER_2 = DATA_PATH + 'features_20170216_resnet152/'
 
 logger = getLogger(__name__)
 
@@ -56,10 +59,14 @@ def train_lightgbm(verbose=True):
     """
     x = np.array([np.r_[np.mean(np.load(FEATURE_FOLDER + '/%s.npy' % str(id)), axis=0)]
                   for id in df['id'].tolist()])
-
+    x2 = np.array([np.load(FEATURE_FOLDER_2 + '/%s.npy' % str(id))
+                   for id in df['id'].tolist()])[:, FEATURE]
+    x = np.c_[x, x2]
+    """
     x2 = np.array([np.r_[np.mean(np.load(FEATURE_FOLDER_2 + '/%s.npy' % str(id)), axis=0)]
                    for id in df['id'].tolist()])
-    x = np.c_[x, x2]
+
+    """
     # x = np.array([np.load(FEATURE_FOLDER + '/%s.npy' % str(id))[:30].flatten()
     #              for id in df['id'].tolist()])[:, FEATURE]
     y = df['cancer'].as_matrix()
@@ -67,6 +74,7 @@ def train_lightgbm(verbose=True):
     trn_x, val_x, trn_y, val_y = cross_validation.train_test_split(x, y, random_state=42, stratify=y,
                                                                    test_size=0.20)
     """
+    logger.info('data size: {}'.format(x.shape))
     all_params = {'max_depth': [3, 5, 10],
                   'learning_rate': [0.06, 0.1, 0.2],
                   'n_estimators': [1500],
@@ -100,9 +108,9 @@ def train_lightgbm(verbose=True):
                     early_stopping_rounds=300
                     )
             _score = log_loss(val_y, clf.predict_proba(val_x)[:, 1])
-            #logger.debug('   _score: %s' % _score)
+            # logger.debug('   _score: %s' % _score)
             list_score.append(_score)
-        score = np.max(list_score)
+        score = np.mean(list_score)
         params['n_estimators'] = clf.best_iteration
         logger.info('param: %s' % (params))
         logger.info('score: %s (avg %s min %s max %s)' %
@@ -113,10 +121,11 @@ def train_lightgbm(verbose=True):
         logger.info('best score: %s' % min_score)
         logger.info('best_param: %s' % (min_params))
 
-    #imp = pd.DataFrame(clf.feature_importances_, columns=['imp'])
-    # with open('features.py', 'a') as f:
-    #    f.write('FEATURE = [' + ','.join(map(str, imp[imp['imp'] > 0].index.values)) + ']\n')
-
+    """
+    imp = pd.DataFrame(clf.feature_importances_, columns=['imp'])
+    with open('features.py', 'a') as f:
+        f.write('FEATURE = [' + ','.join(map(str, imp[imp['imp'] > 0].index.values)) + ']\n')
+    """
     clf = LGBMClassifier(**min_params)
     clf.fit(x, y)
 
@@ -139,6 +148,6 @@ if __name__ == "__main__":
     logger.addHandler(handler)
 
     clf = train_lightgbm(verbose=False)
-    #clf = train_xgboost()
+    # clf = train_xgboost()
     with open('model.pkl', 'wb') as f:
         pickle.dump(clf, f, -1)

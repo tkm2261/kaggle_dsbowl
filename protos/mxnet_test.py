@@ -14,8 +14,10 @@ from features import FEATURE
 DATA_PATH = '../../'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 STAGE1_SAMPLE_SUBMISSION = DATA_PATH + 'stage1_sample_submission.csv'
-FEATURE_FOLDER = DATA_PATH + 'features_20170215_mxnet/'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
-FEATURE_FOLDER_2 = DATA_PATH + 'features_20170216_resnet152/'
+# FEATURE_FOLDER = DATA_PATH + 'features_20170215_mxnet/'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
+#FEATURE_FOLDER_2 = DATA_PATH + 'features_20170216_resnet152/'
+
+from mxnet_train import FEATURE_FOLDER, FEATURE_FOLDER_2
 
 logger = getLogger(__name__)
 
@@ -29,9 +31,8 @@ def compute_prediction(clf, verbose=True):
     #              for id in df['id'].tolist()])[:, FEATURE]
     x = np.array([np.r_[np.mean(np.load(FEATURE_FOLDER + '/%s.npy' % str(id)), axis=0)]
                   for id in df['id'].tolist()])
-
-    x2 = np.array([np.r_[np.mean(np.load(FEATURE_FOLDER_2 + '/%s.npy' % str(id)), axis=0)]
-                   for id in df['id'].tolist()])
+    x2 = np.array([np.load(FEATURE_FOLDER_2 + '/%s.npy' % str(id))
+                   for id in df['id'].tolist()])[:, FEATURE]
     x = np.c_[x, x2]
 
     pred = clf.predict_proba(x)[:, 1]
