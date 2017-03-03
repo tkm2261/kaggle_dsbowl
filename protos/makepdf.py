@@ -1,19 +1,16 @@
 
-from utils import load_scan, get_pixels_hu, resample, normalize, zero_center
-
 import os
-import sys
 import glob
 import numpy as np
 import dicom
-from logging import getLogger
-import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from logging import StreamHandler, DEBUG, Formatter, getLogger
 
 logger = getLogger(__name__)
 
-
-DATA_PATH = '../../'
-STAGE1_FOLDER = DATA_PATH + 'stage1/stage1/'
+DATA_PATH = '../input/'
+STAGE1_FOLDER = DATA_PATH + 'sample_images'
 
 
 def get_3d_data(path):
@@ -24,15 +21,9 @@ def get_3d_data(path):
     return img
 
 
-def calc_features():
-    """Execute the forward propagation on the images to obtain the features
-    and save them as numpy arrays.
+def make_pdf():
 
-    """
-
-    import matplotlib.pyplot as plt
     plt.switch_backend('agg')
-    from matplotlib.backends.backend_pdf import PdfPages
     logger.info("Compute features")
     for folder in glob.glob(STAGE1_FOLDER + '*'):
         patient_id = os.path.basename(folder)
@@ -47,7 +38,6 @@ def calc_features():
 
 
 if __name__ == '__main__':
-    from logging import StreamHandler, DEBUG, Formatter, FileHandler
 
     log_fmt = Formatter('%(asctime)s %(name)s %(lineno)d [%(levelname)s][%(funcName)s] %(message)s ')
     handler = StreamHandler()
@@ -56,4 +46,4 @@ if __name__ == '__main__':
     logger.setLevel(DEBUG)
     logger.addHandler(handler)
 
-    calc_features()
+    make_pdf()
