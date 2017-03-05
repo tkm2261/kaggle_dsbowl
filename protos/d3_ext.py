@@ -6,12 +6,18 @@ import os
 import glob
 import scipy.ndimage
 import matplotlib.pyplot as plt
-
+from multiprocessing import Pool
+import pickle
+import gzip
 from skimage import measure, morphology
 from utils import load_scan, get_pixels_hu, resample
 
-DATA_PATH = '../../'
-STAGE1_FOLDER = DATA_PATH + 'stage1/stage1/'
+import scipy.sparse as sp
+
+DATA_PATH = '../../data/data/'
+STAGE1_FOLDER = DATA_PATH + 'stage1/'
+
+DATA_PATH = '../features/'
 FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary/'
 FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
@@ -74,24 +80,33 @@ def segment_lung_mask(image, fill_lung_structures=True):
 
 def calc_features():
     logger.info("Compute features")
+    p = Pool()
+    p.map(_calc_features, glob.glob(STAGE1_FOLDER + '*'))
+    p.close()
+    p.join()
 
-    for folder in glob.glob(STAGE1_FOLDER + '*'):
-        patient_id = os.path.basename(folder)
-        patient = load_scan(folder)
-        patient_pixels = get_pixels_hu(patient)
 
-        if 0:
-            pix_resampled, _ = resample(patient_pixels, patient, [1, 1, 1])
-        else:
-            pix_resampled = patient_pixels
+def _calc_features(folder):
+    patient_id = os.path.basename(folder)
+    patient = load_scan(folder)
+    patient_pixels = get_pixels_hu(patient)
 
-        segmented_lungs = segment_lung_mask(pix_resampled, False)
-        segmented_lungs_fill = segment_lung_mask(pix_resampled, True)
+    if 0:
+        pix_resampled, _ = resample(patient_pixels, patient, [1, 1, 1])
+    else:
+        pix_resampled = patient_pixels
 
-        logger.info("Feats. size: {} {}".format(segmented_lungs.shape, segmented_lungs_fill.shape))
+    segmented_lungs = segment_lung_mask(pix_resampled, False)
+    segmented_lungs_fill = segment_lung_mask(pix_resampled, True)
 
-        np.save(FEATURE_FOLDER + patient_id, segmented_lungs)
-        np.save(FEATURE_FOLDER_FILL + patient_id, segmented_lungs_fill)
+    logger.info("Feats. size: {} {}".format(segmented_lungs.shape, segmented_lungs_fill.shape))
+
+    with gzip.open(FEATURE_FOLDER + patient_id + '.pkl.gz', 'wb') as f:
+        pickle.dump(segmented_lungs, f, -1)
+    with gzip.open(FEATURE_FOLDER_FILL + patient_id + '.pkl.gz', 'wb') as f:
+        pickle.dump(segmented_lungs_fill, f, -1)
+        # np.save(FEATURE_FOLDER + patient_id, segmented_lungs)
+    # np.save(FEATURE_FOLDER_FILL + patient_id, segmented_lungs_fill)
 
 
 if __name__ == '__main__':

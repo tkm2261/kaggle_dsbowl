@@ -10,9 +10,10 @@ from sklearn.model_selection import GridSearchCV, ParameterGrid, StratifiedKFold
 import xgboost as xgb
 from lightgbm.sklearn import LGBMClassifier
 
-DATA_PATH = '../../'
+DATA_PATH = '../../data/data/'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
+DATA_PATH = '../features/'
 FEATURE_FOLDER = DATA_PATH + 'features_20170215_mxnet'  # DATA_PATH + 'features/features' + EXPERIMENT_NUMBER + '/'
 FEATURE_FOLDER_2 = DATA_PATH + 'features_20170224_pixcel_cnt'
 
