@@ -24,7 +24,7 @@ logger = getLogger(__name__)
 IMG_SIZE = (512, 512, 200)
 
 N_CLASSES = 2
-BATCH_SIZE = 100
+BATCH_SIZE = 4
 
 df = pd.read_csv(STAGE1_LABELS)
 list_patient_id = df['id'].tolist()
@@ -107,7 +107,7 @@ def convolutional_neural_network(x, keep_rate=0.8):
     with tf.variable_scope('conv2') as scope:
         out_filters = 32
         kernel = _weight_variable('weights', [5, 5, 5, in_filters, out_filters])
-        conv = tf.nn.conv3d(prev_layer, kernel, [1, 1, 1, 1, 1], padding='SAME')
+        conv = tf.nn.conv3d(prev_layer, kernel, [1, 3, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
         conv2 = tf.nn.relu(bias, name=scope.name)
@@ -121,7 +121,7 @@ def convolutional_neural_network(x, keep_rate=0.8):
     with tf.variable_scope('conv3_1') as scope:
         out_filters = 64
         kernel = _weight_variable('weights', [5, 5, 5, in_filters, out_filters])
-        conv = tf.nn.conv3d(prev_layer, kernel, [1, 1, 1, 1, 1], padding='SAME')
+        conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 2, 2, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
         prev_layer = tf.nn.relu(bias, name=scope.name)
@@ -202,7 +202,7 @@ def train_neural_network():
             successful_runs = 0
             for i, batch in enumerate(list_batch[:-1]):
                 total_runs += 1
-                logger.info('batch: {}, batch_size: {}'.format(i, len(batch)))
+                logger.debug('batch: {}, batch_size: {}'.format(i, len(batch)))
                 try:
                     X = load_data2(batch)
                     Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
@@ -214,7 +214,8 @@ def train_neural_network():
 
                 except Exception as e:
                     logger.info(str(e))
-                logger.info('batch loss: %s' % (epoch_loss / successful_runs))
+                if i % 10 == 0:
+                    logger.info('batch loss: %s %s' % (i, epoch_loss / len(batch)))
 
             test_loss = 0
             test_num = 0
