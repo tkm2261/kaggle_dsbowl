@@ -168,15 +168,22 @@ def train_neural_network():
                 logger.info(str(e))
             logger.info('test loss: %s' % (test_loss / test_num))
 
-            for j in range(len(Y)):
-                try:
-                    _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j]})
-                except Exception as e:
-                    logger.info(str(e))
 
             save_path = saver.save(sess, "model.ckpt")
             logger.info("model saved %s" % save_path)
-        logger.info('Done. Finishing accuracy:')
+
+    X = load_data2(list_batch[-1])
+    Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
+
+    for j in range(len(Y)):
+        try:
+            _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j]})
+        except Exception as e:
+            logger.info(str(e))
+    save_path = saver.save(sess, "model.ckpt")
+    logger.info("model saved %s" % save_path)
+
+    logger.info('Done. Finishing accuracy:')
 
 
 if __name__ == '__main__':
