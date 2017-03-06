@@ -119,7 +119,7 @@ def train_neural_network():
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
 
-    hm_epochs = 10
+    hm_epochs = 10000
 
     test_data = load_data2(list_batch[-1])
     test_label = list_labels[-1]
@@ -152,6 +152,28 @@ def train_neural_network():
                 except Exception as e:
                     logger.info(str(e))
                 logger.info('batch loss: %s' % (epoch_loss / successful_runs))
+
+            test_loss = 0
+            test_num = 0
+            try:
+                X = load_data2(list_batch[-1])
+                Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
+                #logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
+
+                for j in range(len(Y)):
+                    c = sess.run([cost], feed_dict={x: X[j], y: Y[j]})
+                    test_loss += c
+                    test_num += 1
+            except Exception as e:
+                logger.info(str(e))
+            logger.info('test loss: %s' % (test_loss / test_num))
+
+            for j in range(len(Y)):
+                try:
+                    _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j]})
+                except Exception as e:
+                    logger.info(str(e))
+
             save_path = saver.save(sess, "model.ckpt")
             logger.info("model saved %s" % save_path)
         logger.info('Done. Finishing accuracy:')
