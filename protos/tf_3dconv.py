@@ -161,7 +161,7 @@ def train_neural_network():
                 #logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
 
                 for j in range(len(Y)):
-                    c = sess.run([cost], feed_dict={x: X[j], y: Y[j]})
+                    c = sess.run(cost, feed_dict={x: X[j], y: Y[j]})
                     test_loss += c
                     test_num += 1
             except Exception as e:
