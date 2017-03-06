@@ -8,7 +8,7 @@ from scipy import ndimage as nd
 
 from sklearn.model_selection import StratifiedKFold
 
-DATA_PATH = '../../data/data/'
+DATA_PATH = '../../'
 STAGE1_FOLDER = DATA_PATH + 'stage1/'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
@@ -24,7 +24,7 @@ logger = getLogger(__name__)
 IMG_SIZE = (512, 512, 200)
 
 N_CLASSES = 2
-BATCH_SIZE = 3
+BATCH_SIZE = 10
 
 df = pd.read_csv(STAGE1_LABELS)
 list_patient_id = df['id'].tolist()
@@ -124,39 +124,37 @@ def train_neural_network():
     test_data = load_data2(list_batch[-1])
     test_label = list_labels[-1]
 
+    correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
+    accuracy = tf.reduce_mean(tf.cast(correct, 'float'))
+
     with tf.Session() as sess:
         sess.run(tf.initialize_all_variables())
-
-        successful_runs = 0
+        saver = tf.train.Saver()
         total_runs = 0
 
         for epoch in range(hm_epochs):
+            logger.info('epoch: %s' % epoch)
             epoch_loss = 0
+            successful_runs = 0
             for i, batch in enumerate(list_batch[:-1]):
                 total_runs += 1
                 logger.info('batch: {}, batch_size: {}'.format(i, len(batch)))
                 try:
                     X = load_data2(batch)
                     Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
+                    #logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
+
                     for j in range(len(Y)):
-                        logger.debug('   processing')
                         _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j]})
                         epoch_loss += c
                         successful_runs += 1
+                        logger.debug('   loss: %s' % (epoch_loss / successful_runs))
                 except Exception as e:
                     logger.info(str(e))
-
-            logger.info('Epoch', epoch + 1, 'completed out of', hm_epochs, 'loss:', epoch_loss)
-
-            correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
-            accuracy = tf.reduce_mean(tf.cast(correct, 'float'))
-
-            logger.info('Accuracy:', accuracy.eval({x: test_data, y: test_label}))
-
+                logger.info('batch loss: %s' % (epoch_loss / successful_runs))
+            save_path = saver.save(sess, "model.ckpt")
+            logger.info("model saved %s" % save_path)
         logger.info('Done. Finishing accuracy:')
-        logger.info('Accuracy:', accuracy.eval({x: test_data, y: test_label}))
-
-        logger.info('fitment percent:', successful_runs / total_runs)
 
 
 if __name__ == '__main__':
@@ -170,9 +168,9 @@ if __name__ == '__main__':
     logger.addHandler(handler)
 
     handler = StreamHandler()
-    handler.setLevel(DEBUG)
+    handler.setLevel('INFO')
     handler.setFormatter(log_fmt)
-    logger.setLevel(DEBUG)
+    logger.setLevel('INFO')
     logger.addHandler(handler)
 
     # data, labels = load_data()
