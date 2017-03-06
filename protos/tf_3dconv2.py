@@ -202,6 +202,7 @@ def train_neural_network():
             successful_runs = 0
             for i, batch in enumerate(list_batch[:-1]):
                 total_runs += 1
+                successful_runs += len(batch)
                 logger.debug('batch: {}, batch_size: {}'.format(i, len(batch)))
                 try:
                     X = load_data2(batch)
@@ -215,7 +216,7 @@ def train_neural_network():
                 except Exception as e:
                     logger.info(str(e))
                 if i % 10 == 0:
-                    logger.info('batch loss: %s %s' % (i, epoch_loss / len(batch)))
+                    logger.info('batch loss: %s %s' % (i, epoch_loss / successful_runs))
 
             test_loss = 0
             test_num = 0
