@@ -33,6 +33,7 @@ BATCH_SIZE = 4
 df = pd.read_csv(STAGE1_LABELS)
 list_patient_id = df['id'].tolist()
 labels = df['cancer'].tolist()
+keep_prob = tf.placeholder(tf.float32)
 
 
 def split_batch(list_data, batch_size):
@@ -91,7 +92,7 @@ def _bias_variable(name, shape):
     return tf.get_variable(name, shape, DTYPE, tf.constant_initializer(0.1, dtype=DTYPE))
 
 
-def convolutional_neural_network(x, keep_rate=0.7):
+def convolutional_neural_network(x):
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
@@ -99,7 +100,7 @@ def convolutional_neural_network(x, keep_rate=0.7):
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
         out_filters = 16
-        kernel = _weight_variable('weights', [15, 15, 15, in_filters, out_filters])
+        kernel = _weight_variable('weights', [15, 15, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 5, 5, 5, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
@@ -108,7 +109,7 @@ def convolutional_neural_network(x, keep_rate=0.7):
         prev_layer = conv1
         in_filters = out_filters
 
-    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
+    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
     norm1 = pool1  # tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta = 0.75, name='norm1')
 
     prev_layer = norm1
@@ -164,6 +165,8 @@ def convolutional_neural_network(x, keep_rate=0.7):
         biases = _bias_variable('biases', [FC_SIZE])
         local3 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
 
+        local3 = tf.nn.dropout(local3, keep_prob)
+
     prev_layer = local3
 
     with tf.variable_scope('local4') as scope:
@@ -172,7 +175,7 @@ def convolutional_neural_network(x, keep_rate=0.7):
         weights = _weight_variable('weights', [dim, FC_SIZE])
         biases = _bias_variable('biases', [FC_SIZE])
         local4 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
-
+        local4 = tf.nn.dropout(local4, keep_prob)
     prev_layer = local4
 
     with tf.variable_scope('softmax_linear') as scope:
@@ -213,7 +216,7 @@ def train_neural_network():
                 # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
 
                 for j in range(len(Y)):
-                    _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j]})
+                    _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j], keep_prob: 0.8})
                     test_loss += c
                     test_num += 1
             except Exception as e:
@@ -229,7 +232,7 @@ def train_neural_network():
             if i % 10 == 0:
                 logger.info("predict %s" % i)
             X = np.array([_load_data(patient_id)])
-            p = sess.run(prediction, feed_dict={x: X})[0][1]
+            p = sess.run(prediction, feed_dict={x: X, keep_prob: 1.})[0][1]
             pred.append(p)
         pred = np.array(pred)
         df['cancer'] = sigmoid(pred)  # tf.logits(pred)

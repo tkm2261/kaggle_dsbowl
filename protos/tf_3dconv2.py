@@ -201,12 +201,12 @@ def train_neural_network():
     correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
     accuracy = tf.reduce_mean(tf.cast(correct, 'float'))
 
-    # with tf.Session() as sess:
-    #    sess.run(tf.initialize_all_variables())
-    #    saver = tf.train.Saver()
     with tf.Session() as sess:
+        sess.run(tf.initialize_all_variables())
         saver = tf.train.Saver()
-        saver.restore(sess, "model_train/model.ckpt")
+    # with tf.Session() as sess:
+    #    saver = tf.train.Saver()
+    #    saver.restore(sess, "model_train/model.ckpt")
 
         total_runs = 0
 
