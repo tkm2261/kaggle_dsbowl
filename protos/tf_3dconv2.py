@@ -32,6 +32,7 @@ BATCH_SIZE = 4
 df = pd.read_csv(STAGE1_LABELS)
 list_patient_id = df['id'].tolist()
 labels = df['cancer'].tolist()
+keep_prob = tf.placeholder(tf.float32)
 
 
 def split_batch(list_data, batch_size):
@@ -86,7 +87,7 @@ def _bias_variable(name, shape):
     return tf.get_variable(name, shape, DTYPE, tf.constant_initializer(0.1, dtype=DTYPE))
 
 
-def convolutional_neural_network(x, keep_rate=0.8):
+def convolutional_neural_network(x):
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
@@ -159,7 +160,7 @@ def convolutional_neural_network(x, keep_rate=0.8):
         biases = _bias_variable('biases', [FC_SIZE])
         local3 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
 
-        local3 = tf.nn.dropout(local3, keep_rate)
+        local3 = tf.nn.dropout(local3, keep_prob)
 
     prev_layer = local3
 
@@ -169,7 +170,7 @@ def convolutional_neural_network(x, keep_rate=0.8):
         weights = _weight_variable('weights', [dim, FC_SIZE])
         biases = _bias_variable('biases', [FC_SIZE])
         local4 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
-        local4 = tf.nn.dropout(local4, keep_rate)
+        local4 = tf.nn.dropout(local4, keep_prob)
     prev_layer = local4
 
     with tf.variable_scope('softmax_linear') as scope:
@@ -200,12 +201,12 @@ def train_neural_network():
     correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
     accuracy = tf.reduce_mean(tf.cast(correct, 'float'))
 
-    with tf.Session() as sess:
-        sess.run(tf.initialize_all_variables())
-        saver = tf.train.Saver()
     # with tf.Session() as sess:
+    #    sess.run(tf.initialize_all_variables())
     #    saver = tf.train.Saver()
-    #    saver.restore(sess, "model_train/model.ckpt")
+    with tf.Session() as sess:
+        saver = tf.train.Saver()
+        saver.restore(sess, "model_train/model.ckpt")
 
         total_runs = 0
 
@@ -225,7 +226,7 @@ def train_neural_network():
                     Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
                     # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
 
-                    _, c = sess.run([optimizer, cost], feed_dict={x: X, y: Y})
+                    _, c = sess.run([optimizer, cost], feed_dict={x: X, y: Y, keep_prob: 0.8})
                     epoch_loss += c
                     successful_runs += len(batch)
 
@@ -242,7 +243,7 @@ def train_neural_network():
                 # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
 
                 for j in range(len(Y)):
-                    c = sess.run(cost, feed_dict={x: X[j], y: Y[j]})
+                    c = sess.run(cost, feed_dict={x: X[j], y: Y[j], keep_prob: 1.})
                     test_loss += c
                     test_num += 1
             except Exception as e:
@@ -257,7 +258,7 @@ def train_neural_network():
 
     for j in range(len(Y)):
         try:
-            _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j]})
+            _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j], keep_prob: 0.8})
         except Exception as e:
             logger.info(str(e))
     save_path = saver.save(sess, "model.ckpt")
