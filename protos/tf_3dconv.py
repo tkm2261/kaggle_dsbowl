@@ -34,11 +34,12 @@ labels = df['cancer'].tolist()
 def split_batch(list_data, batch_size):
     ret = []
     for i in range(int(len(list_data) / batch_size) + 1):
-        from_idx = i
-        next_idx = i + batch_size if i + batch_size <= len(list_data) else len(list_data)
+        from_idx = i * batch_size
+        next_idx = from_idx + batch_size if from_idx + batch_size <= len(list_data) else len(list_data)
 
         if from_idx >= next_idx:
             break
+
         ret.append(list_data[from_idx:next_idx])
     return ret
 
@@ -167,7 +168,6 @@ def train_neural_network():
             except Exception as e:
                 logger.info(str(e))
             logger.info('test loss: %s' % (test_loss / test_num))
-
 
             save_path = saver.save(sess, "model.ckpt")
             logger.info("model saved %s" % save_path)
