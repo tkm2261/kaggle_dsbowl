@@ -27,7 +27,7 @@ logger = getLogger(__name__)
 IMG_SIZE = (512, 512, 200)
 
 N_CLASSES = 2
-BATCH_SIZE = 4
+BATCH_SIZE = 10
 
 df = pd.read_csv(STAGE1_LABELS)
 list_patient_id = df['id'].tolist()
@@ -201,12 +201,12 @@ def train_neural_network():
     correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
     accuracy = tf.reduce_mean(tf.cast(correct, 'float'))
 
-    # with tf.Session() as sess:
-    #    sess.run(tf.initialize_all_variables())
-    #    saver = tf.train.Saver()
     with tf.Session() as sess:
+        sess.run(tf.initialize_all_variables())
         saver = tf.train.Saver()
-        saver.restore(sess, "model_train/model.ckpt")
+    # with tf.Session() as sess:
+    #    saver = tf.train.Saver()
+    #    saver.restore(sess, "model_train/model.ckpt")
 
         total_runs = 0
 
@@ -232,7 +232,7 @@ def train_neural_network():
 
                 except Exception as e:
                     logger.info(str(e))
-                if i % 10 == 0:
+                if i % 1 == 0:
                     logger.info('batch loss: %s %s' % (i, epoch_loss / successful_runs))
 
             test_loss = 0
