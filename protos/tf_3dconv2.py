@@ -95,7 +95,7 @@ def convolutional_neural_network(x):
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
         out_filters = 16
-        kernel = _weight_variable('weights', [15, 15, 5, in_filters, out_filters])
+        kernel = _weight_variable('weights', [10, 10, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 5, 5, 5, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
@@ -152,7 +152,7 @@ def convolutional_neural_network(x):
 
     # normalize prev_layer here
     prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
-
+    """
     with tf.variable_scope('local3') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
@@ -163,7 +163,7 @@ def convolutional_neural_network(x):
         local3 = tf.nn.dropout(local3, keep_prob)
 
     prev_layer = local3
-
+    """
     with tf.variable_scope('local4') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
@@ -250,7 +250,7 @@ def train_neural_network():
                 logger.info(str(e))
             logger.info('test loss: %s' % (test_loss / test_num))
 
-            save_path = saver.save(sess, "model0307_new/model.ckpt", global_step=epoch)
+            save_path = saver.save(sess, "model0307_tune/model.ckpt", global_step=epoch)
             logger.info("model saved %s" % save_path)
 
     X = load_data2(list_batch[-1])
