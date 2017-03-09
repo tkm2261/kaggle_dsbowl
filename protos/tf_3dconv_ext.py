@@ -18,7 +18,7 @@ STAGE1_SAMPLE_SUBMISSION = DATA_PATH + 'stage1_sample_submission.csv'
 
 DATA_PATH = '../features/'
 FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary_resize/'
-FEATURE_FOLDER_OUT = DATA_PATH + 'features_20170306_3d_cnn/'
+FEATURE_FOLDER_OUT = DATA_PATH + 'features_20170307_tune/'
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
 
@@ -35,6 +35,7 @@ BATCH_SIZE = 4
 import glob
 import os
 list_patient_id = [os.path.basename(folder).split('.')[0] for folder in glob.glob(FEATURE_FOLDER + '*')]
+keep_prob = tf.placeholder(tf.float32)
 
 # df['id'].tolist()
 
@@ -94,7 +95,7 @@ def _bias_variable(name, shape):
     return tf.get_variable(name, shape, DTYPE, tf.constant_initializer(0.1, dtype=DTYPE))
 
 
-def convolutional_neural_network(x, keep_rate=0.7):
+def convolutional_neural_network(x):
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
@@ -102,7 +103,7 @@ def convolutional_neural_network(x, keep_rate=0.7):
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
         out_filters = 16
-        kernel = _weight_variable('weights', [15, 15, 15, in_filters, out_filters])
+        kernel = _weight_variable('weights', [10, 10, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 5, 5, 5, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
@@ -111,7 +112,7 @@ def convolutional_neural_network(x, keep_rate=0.7):
         prev_layer = conv1
         in_filters = out_filters
 
-    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
+    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
     norm1 = pool1  # tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta = 0.75, name='norm1')
 
     prev_layer = norm1
@@ -159,7 +160,7 @@ def convolutional_neural_network(x, keep_rate=0.7):
 
     # normalize prev_layer here
     prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
-
+    """
     with tf.variable_scope('local3') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
@@ -167,15 +168,17 @@ def convolutional_neural_network(x, keep_rate=0.7):
         biases = _bias_variable('biases', [FC_SIZE])
         local3 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
 
-    prev_layer = local3
+        local3 = tf.nn.dropout(local3, keep_prob)
 
+    prev_layer = local3
+    """
     with tf.variable_scope('local4') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
         weights = _weight_variable('weights', [dim, FC_SIZE])
         biases = _bias_variable('biases', [FC_SIZE])
         local4 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
-
+        local4 = tf.nn.dropout(local4, keep_prob)
     prev_layer = local4
 
     with tf.variable_scope('softmax_linear') as scope:
@@ -201,11 +204,11 @@ def train_neural_network():
     with tf.Session() as sess:
         # 変数の読み込み
         saver = tf.train.Saver()
-        saver.restore(sess, "model0306/model.ckpt")
+        saver.restore(sess, "model0307_tune/model_pred-62.ckpt")
         cnt = 0
         for batch in list_batch:
             X = load_data2(batch)
-            p = sess.run(prev_layer, feed_dict={x: X})
+            p = sess.run(prev_layer, feed_dict={x: X, keep_prob: 1.})
 
             for i, patient_id in enumerate(batch):
                 logger.info('{} {} {}'.format(cnt, patient_id, p[i].shape))
