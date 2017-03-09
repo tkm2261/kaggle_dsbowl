@@ -18,8 +18,13 @@ STAGE1_SAMPLE_SUBMISSION = DATA_PATH + 'stage1_sample_submission.csv'
 
 DATA_PATH = '../features/'
 FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary_resize/'
-# FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
+FEATURE_FOLDER_1 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_yoko_plus10/'
+FEATURE_FOLDER_2 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_yoko_minus10/'
+FEATURE_FOLDER_3 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_tate_plus10/'
+FEATURE_FOLDER_4 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_tate_minus10/'
+
+LIST_FEATURES = [FEATURE_FOLDER, FEATURE_FOLDER_1, FEATURE_FOLDER_2, FEATURE_FOLDER_3, FEATURE_FOLDER_4]
 
 from logging import getLogger
 
@@ -33,6 +38,7 @@ BATCH_SIZE = 4
 df = pd.read_csv(STAGE1_LABELS)
 list_patient_id = df['id'].tolist()
 labels = df['cancer'].tolist()
+keep_prob = tf.placeholder(tf.float32)
 
 
 def split_batch(list_data, batch_size):
@@ -62,8 +68,11 @@ def load_data():
     return np.array(images), labels
 
 
+from tf_3dconv2_rot import load_data2, _load_data
+"""
 def load_data2(batch):
     return [_load_data(p) for p in batch]
+
 
 
 def _load_data(patient_id):
@@ -73,7 +82,7 @@ def _load_data(patient_id):
         # img = nd.interpolation.zoom(img, [float(IMG_SIZE[i]) / img.shape[i] for i in range(3)])
         # logger.debug('{} img size] {}'.format(patient_id, img.shape))
     return img
-
+"""
 
 FC_SIZE = 1024
 DTYPE = tf.float32
@@ -91,7 +100,7 @@ def _bias_variable(name, shape):
     return tf.get_variable(name, shape, DTYPE, tf.constant_initializer(0.1, dtype=DTYPE))
 
 
-def convolutional_neural_network(x, keep_rate=0.7):
+def convolutional_neural_network(x):
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
@@ -99,7 +108,7 @@ def convolutional_neural_network(x, keep_rate=0.7):
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
         out_filters = 16
-        kernel = _weight_variable('weights', [15, 15, 15, in_filters, out_filters])
+        kernel = _weight_variable('weights', [15, 15, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 5, 5, 5, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
@@ -108,7 +117,7 @@ def convolutional_neural_network(x, keep_rate=0.7):
         prev_layer = conv1
         in_filters = out_filters
 
-    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
+    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
     norm1 = pool1  # tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta = 0.75, name='norm1')
 
     prev_layer = norm1
@@ -164,6 +173,8 @@ def convolutional_neural_network(x, keep_rate=0.7):
         biases = _bias_variable('biases', [FC_SIZE])
         local3 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
 
+        local3 = tf.nn.dropout(local3, keep_prob)
+
     prev_layer = local3
 
     with tf.variable_scope('local4') as scope:
@@ -172,7 +183,7 @@ def convolutional_neural_network(x, keep_rate=0.7):
         weights = _weight_variable('weights', [dim, FC_SIZE])
         biases = _bias_variable('biases', [FC_SIZE])
         local4 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
-
+        local4 = tf.nn.dropout(local4, keep_prob)
     prev_layer = local4
 
     with tf.variable_scope('softmax_linear') as scope:
@@ -195,12 +206,12 @@ def train_neural_network():
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
 
-    hm_epochs = 4
+    hm_epochs = 3
 
     with tf.Session() as sess:
         # 変数の読み込み
         saver = tf.train.Saver()
-        saver.restore(sess, "model0306/model.ckpt")
+        saver.restore(sess, "model0307/model.ckpt")
 
         for epoch in range(hm_epochs):
             logger.info('epoch: %s' % epoch)
@@ -208,28 +219,36 @@ def train_neural_network():
             test_loss = 0
             test_num = 0
             try:
-                X = load_data2(list_batch[-1])
-                Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
-                # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
+                for folder in LIST_FEATURES:
+                    batch = list_batch[-1]
+                    X = load_data2(batch, folder)
+                    Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
+                    # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
 
-                for j in range(len(Y)):
-                    _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j]})
+                    _, c = sess.run([optimizer, cost], feed_dict={x: X, y: Y, keep_prob: 0.8})
                     test_loss += c
-                    test_num += 1
+                    test_num += len(batch)
             except Exception as e:
                 logger.info(str(e))
             logger.info('test loss: %s' % (test_loss / test_num))
 
-        #save_path = saver.save(sess, "model_pred.ckpt")
-        #logger.info("model saved %s" % save_path)
+        save_path = saver.save(sess, "model0308_rot/model_pred.ckpt")
+        logger.info("model saved %s" % save_path)
 
         df = pd.read_csv(STAGE1_SAMPLE_SUBMISSION)
         pred = []
         for i, patient_id in enumerate(df['id'].tolist()):
             if i % 10 == 0:
                 logger.info("predict %s" % i)
-            X = np.array([_load_data(patient_id)])
-            p = sess.run(prediction, feed_dict={x: X})[0][1]
+            tmp = []
+            for folder in LIST_FEATURES[:1]:
+                try:
+                    X = np.array([_load_data(patient_id, folder)])
+                except EOFError:
+                    continue
+                p = sess.run(prediction, feed_dict={x: X, keep_prob: 1.})[0][1]
+                # tmp.append(p)
+            #p = np.array(tmp).mean(axis=0)
             pred.append(p)
         pred = np.array(pred)
         df['cancer'] = sigmoid(pred)  # tf.logits(pred)

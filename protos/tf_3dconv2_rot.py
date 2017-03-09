@@ -17,8 +17,14 @@ STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
 DATA_PATH = '../features/'
 FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary_resize/'
+
+FEATURE_FOLDER_1 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_yoko_plus10/'
+FEATURE_FOLDER_2 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_yoko_minus10/'
+FEATURE_FOLDER_3 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_tate_plus10/'
+FEATURE_FOLDER_4 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_tate_minus10/'
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
+LIST_FEATURES = [FEATURE_FOLDER, FEATURE_FOLDER_1, FEATURE_FOLDER_2, FEATURE_FOLDER_3, FEATURE_FOLDER_4]
 
 from logging import getLogger
 
@@ -27,7 +33,7 @@ logger = getLogger(__name__)
 IMG_SIZE = (512, 512, 200)
 
 N_CLASSES = 2
-BATCH_SIZE = 4
+BATCH_SIZE = 10
 
 df = pd.read_csv(STAGE1_LABELS)
 list_patient_id = df['id'].tolist()
@@ -62,13 +68,13 @@ def load_data():
     return np.array(images), labels
 
 
-def load_data2(batch):
-    return [_load_data(p) for p in batch]
+def load_data2(batch, folder):
+    return [_load_data(p, folder) for p in batch]
 
 
-def _load_data(patient_id):
+def _load_data(patient_id, folder):
 
-    with gzip.open(FEATURE_FOLDER + patient_id + '.pkl.gz', 'rb') as f:
+    with gzip.open(folder + patient_id + '.pkl.gz', 'rb') as f:
         img = pickle.load(f)
         # img = nd.interpolation.zoom(img, [float(IMG_SIZE[i]) / img.shape[i] for i in range(3)])
         # logger.debug('{} img size] {}'.format(patient_id, img.shape))
@@ -195,18 +201,15 @@ def train_neural_network():
 
     hm_epochs = 10000
 
-    test_data = load_data2(list_batch[-1])
-    test_label = list_labels[-1]
-
     correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
     accuracy = tf.reduce_mean(tf.cast(correct, 'float'))
 
     with tf.Session() as sess:
-        sess.run(tf.initialize_all_variables())
+        # sess.run(tf.initialize_all_variables())
+        #saver = tf.train.Saver()
+
         saver = tf.train.Saver()
-    # with tf.Session() as sess:
-    #    saver = tf.train.Saver()
-    #    saver.restore(sess, "model_train/model.ckpt")
+        saver.restore(sess, "model0307/model.ckpt")
 
         total_runs = 0
 
@@ -222,13 +225,14 @@ def train_neural_network():
                 successful_runs += len(batch)
                 logger.debug('batch: {}, batch_size: {}'.format(i, len(batch)))
                 try:
-                    X = load_data2(batch)
-                    Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
-                    # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
+                    for folder in LIST_FEATURES:
+                        X = load_data2(batch, folder)
+                        Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
+                        # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
 
-                    _, c = sess.run([optimizer, cost], feed_dict={x: X, y: Y, keep_prob: 0.8})
-                    epoch_loss += c
-                    successful_runs += len(batch)
+                        _, c = sess.run([optimizer, cost], feed_dict={x: X, y: Y, keep_prob: 0.8})
+                        epoch_loss += c
+                        successful_runs += len(batch)
 
                 except Exception as e:
                     logger.info(str(e))
@@ -238,19 +242,20 @@ def train_neural_network():
             test_loss = 0
             test_num = 0
             try:
-                X = load_data2(list_batch[-1])
-                Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
-                # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
+                for folder in LIST_FEATURES:
+                    X = load_data2(list_batch[-1], folder)
+                    Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
+                    # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
 
-                for j in range(len(Y)):
-                    c = sess.run(cost, feed_dict={x: X[j], y: Y[j], keep_prob: 1.})
-                    test_loss += c
-                    test_num += 1
+                    for j in range(len(Y)):
+                        c = sess.run(cost, feed_dict={x: X[j], y: Y[j], keep_prob: 1.})
+                        test_loss += c
+                        test_num += 1
             except Exception as e:
                 logger.info(str(e))
             logger.info('test loss: %s' % (test_loss / test_num))
 
-            save_path = saver.save(sess, "model0307_new/model.ckpt", global_step=epoch)
+            save_path = saver.save(sess, "model0308_rot/model.ckpt", global_step=epoch)
             logger.info("model saved %s" % save_path)
 
     X = load_data2(list_batch[-1])
