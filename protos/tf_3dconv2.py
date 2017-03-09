@@ -16,7 +16,7 @@ STAGE1_FOLDER = DATA_PATH + 'stage1/'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
 DATA_PATH = '../features/'
-FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary_resize/'
+FEATURE_FOLDER = DATA_PATH + 'features_20170308_simple_3dimage_resize/'
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
 
@@ -232,7 +232,7 @@ def train_neural_network():
 
                 except Exception as e:
                     logger.info(str(e))
-                if i % 1 == 0:
+                if i % 10 == 0:
                     logger.info('batch loss: %s %s' % (i, epoch_loss / successful_runs))
 
             test_loss = 0
@@ -250,7 +250,7 @@ def train_neural_network():
                 logger.info(str(e))
             logger.info('test loss: %s' % (test_loss / test_num))
 
-            save_path = saver.save(sess, "model0307_tune/model.ckpt", global_step=epoch)
+            save_path = saver.save(sess, "model0309_simble/model.ckpt", global_step=epoch)
             logger.info("model saved %s" % save_path)
 
     X = load_data2(list_batch[-1])
