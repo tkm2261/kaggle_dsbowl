@@ -17,14 +17,15 @@ STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 STAGE1_SAMPLE_SUBMISSION = DATA_PATH + 'stage1_sample_submission.csv'
 
 DATA_PATH = '../features/'
-FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary_resize/'
+FEATURE_FOLDER = DATA_PATH + 'features_20170308_simple_3dimage_resize/'
 
+"""
 FEATURE_FOLDER_1 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_yoko_plus10/'
 FEATURE_FOLDER_2 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_yoko_minus10/'
 FEATURE_FOLDER_3 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_tate_plus10/'
 FEATURE_FOLDER_4 = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_tate_minus10/'
-
-LIST_FEATURES = [FEATURE_FOLDER, FEATURE_FOLDER_1, FEATURE_FOLDER_2, FEATURE_FOLDER_3, FEATURE_FOLDER_4]
+"""
+LIST_FEATURES = [FEATURE_FOLDER]  # , FEATURE_FOLDER_1, FEATURE_FOLDER_2, FEATURE_FOLDER_3, FEATURE_FOLDER_4]
 
 from logging import getLogger
 
@@ -101,6 +102,7 @@ def _bias_variable(name, shape):
 
 
 def convolutional_neural_network(x):
+
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
@@ -108,7 +110,7 @@ def convolutional_neural_network(x):
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
         out_filters = 16
-        kernel = _weight_variable('weights', [15, 15, 5, in_filters, out_filters])
+        kernel = _weight_variable('weights', [10, 10, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 5, 5, 5, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
@@ -165,7 +167,7 @@ def convolutional_neural_network(x):
 
     # normalize prev_layer here
     prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
-
+    """
     with tf.variable_scope('local3') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
@@ -176,7 +178,7 @@ def convolutional_neural_network(x):
         local3 = tf.nn.dropout(local3, keep_prob)
 
     prev_layer = local3
-
+    """
     with tf.variable_scope('local4') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
@@ -211,7 +213,7 @@ def train_neural_network():
     with tf.Session() as sess:
         # 変数の読み込み
         saver = tf.train.Saver()
-        saver.restore(sess, "model0307/model.ckpt")
+        saver.restore(sess, "model0309_simble/model.ckpt-16")
 
         for epoch in range(hm_epochs):
             logger.info('epoch: %s' % epoch)
@@ -232,7 +234,7 @@ def train_neural_network():
                 logger.info(str(e))
             logger.info('test loss: %s' % (test_loss / test_num))
 
-        save_path = saver.save(sess, "model0308_rot/model_pred.ckpt")
+        save_path = saver.save(sess, "model0309_simble/model_pred.ckpt")
         logger.info("model saved %s" % save_path)
 
         df = pd.read_csv(STAGE1_SAMPLE_SUBMISSION)

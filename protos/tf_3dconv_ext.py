@@ -17,8 +17,8 @@ STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 STAGE1_SAMPLE_SUBMISSION = DATA_PATH + 'stage1_sample_submission.csv'
 
 DATA_PATH = '../features/'
-FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary_resize/'
-FEATURE_FOLDER_OUT = DATA_PATH + 'features_20170307_tune/'
+FEATURE_FOLDER = DATA_PATH + 'features_20170308_simple_3dimage_resize/'
+FEATURE_FOLDER_OUT = DATA_PATH + 'features_20170309_simple/'
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
 
@@ -96,6 +96,7 @@ def _bias_variable(name, shape):
 
 
 def convolutional_neural_network(x):
+
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
@@ -204,7 +205,7 @@ def train_neural_network():
     with tf.Session() as sess:
         # 変数の読み込み
         saver = tf.train.Saver()
-        saver.restore(sess, "model0307_tune/model_pred-62.ckpt")
+        saver.restore(sess, "model0309_simple/model_pred.ckpt")
         cnt = 0
         for batch in list_batch:
             X = load_data2(batch)
