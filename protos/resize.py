@@ -14,8 +14,8 @@ STAGE1_FOLDER = DATA_PATH + 'stage1/'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
 DATA_PATH = '../features/'
-FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary/'
-FEATURE_FOLDER_OUT = DATA_PATH + 'features_20170303_lung_binary_resize/'
+FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary_spacing/'
+FEATURE_FOLDER_OUT = DATA_PATH + 'features_20170303_lung_binary_spacing_resize/'
 #FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
 
