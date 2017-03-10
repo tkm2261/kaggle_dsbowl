@@ -18,7 +18,7 @@ STAGE1_SAMPLE_SUBMISSION = DATA_PATH + 'stage1_sample_submission.csv'
 
 DATA_PATH = '../features/'
 FEATURE_FOLDER = DATA_PATH + 'features_20170308_simple_3dimage_resize/'
-FEATURE_FOLDER_OUT = DATA_PATH + 'features_20170309_simple/'
+FEATURE_FOLDER_OUT = DATA_PATH + 'features_20170310_simple_again/'
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
 
@@ -96,7 +96,6 @@ def _bias_variable(name, shape):
 
 
 def convolutional_neural_network(x):
-
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
@@ -131,7 +130,7 @@ def convolutional_neural_network(x):
 
     # normalize prev_layer here
     prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
-
+    """
     with tf.variable_scope('conv3_1') as scope:
         out_filters = 64
         kernel = _weight_variable('weights', [5, 5, 5, in_filters, out_filters])
@@ -162,6 +161,8 @@ def convolutional_neural_network(x):
     # normalize prev_layer here
     prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
     """
+
+    """
     with tf.variable_scope('local3') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
@@ -184,6 +185,7 @@ def convolutional_neural_network(x):
 
     with tf.variable_scope('softmax_linear') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
+
         weights = _weight_variable('weights', [dim, N_CLASSES])
         biases = _bias_variable('biases', [N_CLASSES])
         softmax_linear = tf.add(tf.matmul(prev_layer, weights), biases, name=scope.name)
@@ -205,7 +207,7 @@ def train_neural_network():
     with tf.Session() as sess:
         # 変数の読み込み
         saver = tf.train.Saver()
-        saver.restore(sess, "model0309_simple/model_pred.ckpt")
+        saver.restore(sess, "model0310_simple_again/model_pred.ckpt")
         cnt = 0
         for batch in list_batch:
             X = load_data2(batch)
