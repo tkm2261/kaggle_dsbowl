@@ -16,7 +16,7 @@ STAGE1_FOLDER = DATA_PATH + 'stage1/'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
 DATA_PATH = '../features/'
-FEATURE_FOLDER = DATA_PATH + 'features_20170308_simple_3dimage_resize/'
+FEATURE_FOLDER = DATA_PATH + 'features_20170311_range900_1154_resize/'
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
 
@@ -32,7 +32,6 @@ BATCH_SIZE = 10
 df = pd.read_csv(STAGE1_LABELS)
 list_patient_id = df['id'].tolist()
 labels = df['cancer'].tolist()
-keep_prob = tf.placeholder(tf.float32)
 
 
 def split_batch(list_data, batch_size):
@@ -87,7 +86,7 @@ def _bias_variable(name, shape):
     return tf.get_variable(name, shape, DTYPE, tf.constant_initializer(0.1, dtype=DTYPE))
 
 
-def convolutional_neural_network(x):
+def convolutional_neural_network(x, keep_prob):
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
@@ -95,8 +94,8 @@ def convolutional_neural_network(x):
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
         out_filters = 16
-        kernel = _weight_variable('weights', [10, 10, 5, in_filters, out_filters])
-        conv = tf.nn.conv3d(prev_layer, kernel, [1, 5, 5, 5, 1], padding='SAME')
+        kernel = _weight_variable('weights', [5, 10, 10, in_filters, out_filters])
+        conv = tf.nn.conv3d(prev_layer, kernel, [1, 1, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
         conv1 = tf.nn.relu(bias, name=scope.name)
@@ -104,15 +103,15 @@ def convolutional_neural_network(x):
         prev_layer = conv1
         in_filters = out_filters
 
-    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
+    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 1, 3, 3, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
     norm1 = pool1  # tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta = 0.75, name='norm1')
 
     prev_layer = norm1
 
     with tf.variable_scope('conv2') as scope:
         out_filters = 32
-        kernel = _weight_variable('weights', [5, 5, 5, in_filters, out_filters])
-        conv = tf.nn.conv3d(prev_layer, kernel, [1, 3, 3, 3, 1], padding='SAME')
+        kernel = _weight_variable('weights', [2, 5, 5, in_filters, out_filters])
+        conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
         conv2 = tf.nn.relu(bias, name=scope.name)
@@ -121,7 +120,7 @@ def convolutional_neural_network(x):
         in_filters = out_filters
 
     # normalize prev_layer here
-    prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
+    prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 1, 3, 3, 1], strides=[1, 1, 2, 2, 1], padding='SAME')
     """
     with tf.variable_scope('conv3_1') as scope:
         out_filters = 64
@@ -182,17 +181,18 @@ def convolutional_neural_network(x):
         biases = _bias_variable('biases', [N_CLASSES])
         softmax_linear = tf.add(tf.matmul(prev_layer, weights), biases, name=scope.name)
 
-    return softmax_linear
+    return softmax_linear, prev_layer
 
 
 def train_neural_network():
     x = tf.placeholder('float')
     y = tf.placeholder('float')
+    keep_prob = tf.placeholder(tf.float32)
 
     list_batch = _list_batch
     list_labels = _list_labels
 
-    prediction = convolutional_neural_network(x)
+    prediction, prev_layer = convolutional_neural_network(x, keep_prob)
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
 
@@ -253,21 +253,8 @@ def train_neural_network():
                 logger.info(str(e))
             logger.info('test loss: %s' % (test_loss / test_num))
 
-            save_path = saver.save(sess, "model0310_simple_again/model.ckpt", global_step=epoch)
+            save_path = saver.save(sess, "model0311_range900/model.ckpt", global_step=epoch)
             logger.info("model saved %s" % save_path)
-
-    X = load_data2(list_batch[-1])
-    Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
-
-    for j in range(len(Y)):
-        try:
-            _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j], keep_prob: 0.8})
-        except Exception as e:
-            logger.info(str(e))
-    save_path = saver.save(sess, "model.ckpt")
-    logger.info("model saved %s" % save_path)
-
-    logger.info('Done. Finishing accuracy:')
 
 
 if __name__ == '__main__':
