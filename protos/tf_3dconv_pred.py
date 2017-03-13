@@ -4,11 +4,6 @@ import pandas as pd
 import gzip
 import pickle
 import random
-from multiprocessing import Pool
-from scipy import ndimage as nd
-
-from sklearn.model_selection import StratifiedKFold
-from sklearn.linear_model import LogisticRegression
 
 random.seed(0)
 
@@ -17,8 +12,8 @@ STAGE1_FOLDER = DATA_PATH + 'stage1/'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 STAGE1_SAMPLE_SUBMISSION = DATA_PATH + 'stage1_sample_submission.csv'
 
-
-from tf_3dconv2 import BATCH_SIZE, FEATURE_FOLDER, LIST_FEATURE_FOLDER, IMG_SIZE, N_CLASSES, FC_SIZE, DTYPE, MODEL_FOLDER
+from tf_3dconv2 import FEATURE_FOLDER, MODEL_FOLDER
+from tf_3dconv2 import convolutional_neural_network
 
 MODEL_EPOC = 1
 
@@ -38,12 +33,9 @@ def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 
-from tf_3dconv2 import convolutional_neural_network
-
-
 def train_neural_network():
     x = tf.placeholder('float')
-    y = tf.placeholder('float')
+    #y = tf.placeholder('float')
     keep_prob = tf.placeholder(tf.float32)
 
     prediction, prev_layer = convolutional_neural_network(x, keep_prob, is_train=False)
@@ -57,7 +49,8 @@ def train_neural_network():
         logger.info("model saved %s" % save_path)
 
         df = pd.read_csv(STAGE1_SAMPLE_SUBMISSION)
-        pred = []
+        list_pred = []
+        list_prev = []
         for i, patient_id in enumerate(df['id'].tolist()):
             if i % 10 == 0:
                 logger.info("predict %s" % i)
@@ -66,11 +59,19 @@ def train_neural_network():
                 X = np.array([_load_data(patient_id)])
             except EOFError:
                 continue
-            p = sess.run(prediction, feed_dict={x: X, keep_prob: 1.})[0][1]
-            pred.append(p)
+            pred, prev = sess.run([prediction, prev_layer], feed_dict={x: X, keep_prob: 1.})
+            pred = pred[0][1]
+            list_pred.append(pred)
+            list_prev.append(prev[0])
         pred = np.array(pred)
         df['cancer'] = sigmoid(pred)
         df.to_csv('submit.csv', index=False)
+
+        df_prev = pd.DataFrame(list_prev)
+        df_prev['id'] = df['id'].tolist()
+        df_prev['cancer'] = None
+        df_prev.to_csv(MODEL_FOLDER + 'prev_pred.csv', index=False)
+
 
 if __name__ == '__main__':
     from logging import StreamHandler, DEBUG, Formatter, FileHandler

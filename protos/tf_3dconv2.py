@@ -38,7 +38,7 @@ IMG_SIZE = (200, 512, 512)
 N_CLASSES = 2
 BATCH_SIZE = 12
 DROP_RATE = 0.5
-hm_epochs = 10000
+HM_EPOCHS = 10000
 
 MODEL_FOLDER = "model0311_range900/"
 
@@ -51,42 +51,29 @@ list_patient_id = df['id'].tolist()
 labels = df['cancer'].tolist()
 
 
-def split_batch(list_data, batch_size):
-    ret = []
-    for i in range(int(len(list_data) / batch_size) + 1):
-        from_idx = i * batch_size
-        next_idx = from_idx + batch_size if from_idx + batch_size <= len(list_data) else len(list_data)
-
-        if from_idx >= next_idx:
-            break
-
-        ret.append(list_data[from_idx:next_idx])
-    return ret
-
-_list_batch = split_batch(list_patient_id, BATCH_SIZE)
-_list_labels = split_batch(labels, BATCH_SIZE)
-
-
 def train_neural_network():
-    x = tf.placeholder(tf.float32)
-    y = tf.placeholder(tf.float32)
-    keep_prob = tf.placeholder(tf.float32)
+    x = tf.placeholder(DTYPE)
+    y = tf.placeholder(DTYPE)
+    keep_prob = tf.placeholder(DTYPE)
 
-    list_batch = _list_batch
-    list_labels = _list_labels
+    list_batch = split_batch(list_patient_id, BATCH_SIZE)
+    list_labels = split_batch(labels, BATCH_SIZE)
 
     prediction, prev_layer = convolutional_neural_network(x, keep_prob)
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
 
     with tf.Session() as sess:
-        sess.run(tf.initialize_all_variables())
-        saver = tf.train.Saver()
-        #saver.restore(sess, "model_train/model.ckpt")
+        if 1:
+            sess.run(tf.initialize_all_variables())
+            saver = tf.train.Saver()
+        else:
+            saver = tf.train.Saver()
+            saver.restore(sess, "model_train/model.ckpt")
 
         total_runs = 0
 
-        for epoch in range(hm_epochs):
+        for epoch in range(HM_EPOCHS):
             logger.info('epoch: %s' % epoch)
             epoch_loss = 0
             successful_runs = 0
@@ -128,36 +115,11 @@ def train_neural_network():
             df_prev = pd.DataFrame(list_prev)
             df_prev['id'] = list_ord_batch
             df_prev['cancer'] = list_ord_label
-            df_prev.to_csv(MODEL_FOLDER + '_%s.csv' % epoch, index=False)
+            df_prev.to_csv(MODEL_FOLDER + 'prev_%s.csv' % epoch, index=False)
             logger.info('prev data: {}'.format(df_prev.shape))
 
             save_path = saver.save(sess, MODEL_FOLDER + "model.ckpt", global_step=epoch)
             logger.info("model saved %s" % save_path)
-
-
-def load_data2(batch):
-    """
-    p = Pool(len(batch))
-    ret = p.map(_load_data, batch)
-    p.close()
-    p.join()
-    """
-    return [_load_data(p) for p in batch]
-
-
-def _load_data(patient_id):
-    path = random.choice(LIST_FEATURE_FOLDER)
-    with gzip.open(path + patient_id + '.pkl.gz', 'rb') as f:
-        img = pickle.load(f)
-    return img
-
-
-def _weight_variable(name, shape):
-    return tf.get_variable(name, shape, DTYPE, tf.truncated_normal_initializer(stddev=0.1))
-
-
-def _bias_variable(name, shape):
-    return tf.get_variable(name, shape, DTYPE, tf.constant_initializer(0.1, dtype=DTYPE))
 
 
 def convolutional_neural_network(x, keep_prob, is_train=True):
@@ -275,6 +237,44 @@ def convolutional_neural_network(x, keep_prob, is_train=True):
     return softmax_linear, prev_layer
 
 
+def split_batch(list_data, batch_size):
+    ret = []
+    for i in range(int(len(list_data) / batch_size) + 1):
+        from_idx = i * batch_size
+        next_idx = from_idx + batch_size if from_idx + batch_size <= len(list_data) else len(list_data)
+
+        if from_idx >= next_idx:
+            break
+
+        ret.append(list_data[from_idx:next_idx])
+    return ret
+
+
+def load_data2(batch):
+    """
+    p = Pool(len(batch))
+    ret = p.map(_load_data, batch)
+    p.close()
+    p.join()
+    """
+    return [_load_data(p) for p in batch]
+
+
+def _load_data(patient_id):
+    path = random.choice(LIST_FEATURE_FOLDER)
+    with gzip.open(path + patient_id + '.pkl.gz', 'rb') as f:
+        img = pickle.load(f)
+    return img
+
+
+def _weight_variable(name, shape):
+    return tf.get_variable(name, shape, DTYPE, tf.truncated_normal_initializer(stddev=0.1))
+
+
+def _bias_variable(name, shape):
+    return tf.get_variable(name, shape, DTYPE, tf.constant_initializer(0.1, dtype=DTYPE))
+
+
 if __name__ == '__main__':
     from logging import StreamHandler, DEBUG, Formatter, FileHandler
 
@@ -291,8 +291,4 @@ if __name__ == '__main__':
     logger.setLevel('INFO')
     logger.addHandler(handler)
 
-    # data, labels = load_data()
-    # If you are working with the basic sample data, use maybe 2 instead of
-    # 100 here... you don't have enough data to really do this
-    # Run this locally:
     train_neural_network()
