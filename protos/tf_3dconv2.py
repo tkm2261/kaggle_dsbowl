@@ -93,7 +93,8 @@ def train_neural_network():
             list_prev = []
             tmp = list(range(len(list_batch)))
             random.shuffle(tmp)
-            for i in tmp:
+
+            for cnt, i in enumerate(tmp):
                 batch = list_batch[i]
                 total_runs += 1
                 successful_runs += len(batch)
@@ -109,8 +110,8 @@ def train_neural_network():
 
                 except Exception as e:
                     logger.info(str(e))
-                if i % 10 == 0:
-                    logger.info('batch loss: %s %s' % (i, epoch_loss / successful_runs))
+                if cnt % 10 == 0:
+                    logger.info('batch loss: %s %s' % (cnt, epoch_loss / successful_runs))
 
             clf = LogisticRegression(C=0.1, random_state=0)
             scores = cross_val_score(clf, list_prev, labels[:len(list_prev)], cv=5, scoring='roc_auc', n_jobs=-1)
