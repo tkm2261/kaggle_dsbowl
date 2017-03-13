@@ -42,7 +42,7 @@ HM_EPOCHS = 10000
 
 MODEL_FOLDER = "model0311_range900/"
 
-FC_SIZE = 64  # 1024
+FC_SIZE =  1024
 DTYPE = tf.float32
 
 
