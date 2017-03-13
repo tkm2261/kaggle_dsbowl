@@ -10,6 +10,10 @@ from scipy import ndimage as nd
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.linear_model import LogisticRegression
 
+from logging import getLogger
+
+logger = getLogger(__name__)
+
 random.seed(0)
 
 DATA_PATH = '../../'
@@ -18,17 +22,29 @@ STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
 DATA_PATH = '../features/'
 FEATURE_FOLDER = DATA_PATH + 'features_20170311_range900_1154_resize/'
+
+DATA_PATH = '../../data/features/'
+FEATURE_FOLDER_TP = DATA_PATH + 'features_20170311_range900_1154_resize_t_p10/'
+FEATURE_FOLDER_TN = DATA_PATH + 'features_20170311_range900_1154_resize_t_m10/'
+FEATURE_FOLDER_YP = DATA_PATH + 'features_20170311_range900_1154_resize_y_p10/'
+FEATURE_FOLDER_YN = DATA_PATH + 'features_20170311_range900_1154_resize_y_m10/'
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
+LIST_FEATURE_FOLDER = [FEATURE_FOLDER, FEATURE_FOLDER_TP, FEATURE_FOLDER_TN, FEATURE_FOLDER_YP, FEATURE_FOLDER_YN]
 
-from logging import getLogger
-
-logger = getLogger(__name__)
 
 IMG_SIZE = (200, 512, 512)
 
 N_CLASSES = 2
-BATCH_SIZE = 10
+BATCH_SIZE = 12
+DROP_RATE = 0.5
+hm_epochs = 10000
+
+MODEL_FOLDER = "model0311_range900/"
+
+FC_SIZE = 64  # 1024
+DTYPE = tf.float32
+
 
 df = pd.read_csv(STAGE1_LABELS)
 list_patient_id = df['id'].tolist()
@@ -51,17 +67,65 @@ _list_batch = split_batch(list_patient_id, BATCH_SIZE)
 _list_labels = split_batch(labels, BATCH_SIZE)
 
 
-def load_data():
-    df = pd.read_csv(STAGE1_LABELS)
-    labels = df['cancer'].tolist()
-    p = Pool()
-    images = p.map(_load_data, df['id'].tolist())
-    p.close()
-    p.join()
-    logger.info("image num: %s".format(len(images)))
-    return np.array(images), labels
+def train_neural_network():
+    x = tf.placeholder(tf.float32)
+    y = tf.placeholder(tf.float32)
+    keep_prob = tf.placeholder(tf.float32)
 
-from skimage.transform import rotate
+    list_batch = _list_batch
+    list_labels = _list_labels
+
+    prediction, prev_layer = convolutional_neural_network(x, keep_prob)
+    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
+    optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
+
+    with tf.Session() as sess:
+        sess.run(tf.initialize_all_variables())
+        saver = tf.train.Saver()
+        #saver.restore(sess, "model_train/model.ckpt")
+
+        total_runs = 0
+
+        for epoch in range(hm_epochs):
+            logger.info('epoch: %s' % epoch)
+            epoch_loss = 0
+            successful_runs = 0
+            list_prev = []
+            tmp = list(range(len(list_batch)))
+            random.shuffle(tmp)
+            for i in tmp:
+                batch = list_batch[i]
+                total_runs += 1
+                successful_runs += len(batch)
+                logger.debug('batch: {}, batch_size: {}'.format(i, len(batch)))
+                try:
+                    X = load_data2(batch)
+                    Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
+                    # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
+                    _, c, prev = sess.run([optimizer, cost, prev_layer], feed_dict={x: X, y: Y, keep_prob: DROP_RATE})
+                    list_prev += [prev[j] for j in range(len(batch))]
+                    epoch_loss += c
+                    successful_runs += len(batch)
+
+                except Exception as e:
+                    logger.info(str(e))
+                if i % 10 == 0:
+                    logger.info('batch loss: %s %s' % (i, epoch_loss / successful_runs))
+
+            clf = LogisticRegression(C=0.1, random_state=0)
+            scores = cross_val_score(clf, list_prev, labels[:len(list_prev)], cv=5, scoring='roc_auc', n_jobs=-1)
+            logger.info('auc score: %s' % (scores.mean()))
+            scores = cross_val_score(clf, list_prev, labels[:len(list_prev)], cv=5, scoring='neg_log_loss', n_jobs=-1)
+            logger.info('logloss score: %s' % (- scores.mean()))
+
+            df_prev = pd.DataFrame(list_prev)
+            df_prev['id'] = list_patient_id[:len(list_prev)]
+            df_prev['cancer'] = labels[:len(list_prev)]
+            df_prev.to_csv(MODEL_FOLDER + '_%s.csv' % epoch, index=False)
+            logger.info('prev data: {}'.format(df_prev.shape))
+
+            save_path = saver.save(sess, MODEL_FOLDER + "model.ckpt", global_step=epoch)
+            logger.info("model saved %s" % save_path)
 
 
 def load_data2(batch):
@@ -75,21 +139,10 @@ def load_data2(batch):
 
 
 def _load_data(patient_id):
-    with gzip.open(FEATURE_FOLDER + patient_id + '.pkl.gz', 'rb') as f:
+    path = random.choice(LIST_FEATURE_FOLDER)
+    with gzip.open(path + patient_id + '.pkl.gz', 'rb') as f:
         img = pickle.load(f)
-        # img = nd.interpolation.zoom(img, [float(IMG_SIZE[i]) / img.shape[i] for i in range(3)])
-        # logger.debug('{} img size] {}'.format(patient_id, img.shape))
-    """
-    if random.random() >= 0.5:
-        img = np.array([rotate(im, -10) for im in img]).astype(np.int8)
-    if random.random() >= 0.5:
-        img = rotate(img, -10).astype(np.int8)
-    """
     return img
-
-
-FC_SIZE = 126  # 1024
-DTYPE = tf.float32
 
 
 def _weight_variable(name, shape):
@@ -107,18 +160,18 @@ def convolutional_neural_network(x, keep_prob, is_train=True):
 
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
-        out_filters = 8
+        out_filters = 1
         kernel = _weight_variable('weights', [5, 10, 10, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
-        conv1 = tf.nn.relu(bias, name=scope.name)
-        h2 = tf.contrib.layers.batch_norm(conv1,
+        h2 = tf.contrib.layers.batch_norm(bias,
                                           center=True, scale=True,
                                           is_training=is_train,
                                           scope=scope.name)
 
-        prev_layer = h2
+        conv1 = tf.nn.relu(h2, name=scope.name)
+        prev_layer = conv1
         in_filters = out_filters
 
     pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 2, 3, 3, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
@@ -127,18 +180,17 @@ def convolutional_neural_network(x, keep_prob, is_train=True):
     prev_layer = norm1
 
     with tf.variable_scope('conv2') as scope:
-        out_filters = 4
+        out_filters = 1
         kernel = _weight_variable('weights', [2, 5, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
-        conv2 = tf.nn.relu(bias, name=scope.name)
-        h2 = tf.contrib.layers.batch_norm(conv2,
+        h2 = tf.contrib.layers.batch_norm(bias,
                                           center=True, scale=True,
                                           is_training=is_train,
                                           scope=scope.name)
-
-        prev_layer = h2
+        conv2 = tf.nn.relu(h2, name=scope.name)
+        prev_layer = conv2
         in_filters = out_filters
 
     # normalize prev_layer here
@@ -209,88 +261,11 @@ def convolutional_neural_network(x, keep_prob, is_train=True):
         # prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
         weights = _weight_variable('weights', [dim, N_CLASSES])
         biases = _bias_variable('biases', [N_CLASSES])
-        softmax_linear = tf.add(tf.matmul(prev_layer, weights), biases, name=scope.name)
+        h1 = tf.matmul(prev_layer, weights)
+
+        softmax_linear = tf.add(h1, biases, name=scope.name)
 
     return softmax_linear, prev_layer
-
-
-def train_neural_network():
-    x = tf.placeholder(tf.float32)
-    y = tf.placeholder(tf.float32)
-    keep_prob = tf.placeholder(tf.float32)
-
-    list_batch = _list_batch
-    list_labels = _list_labels
-
-    prediction, prev_layer = convolutional_neural_network(x, keep_prob)
-    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
-    optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
-
-    hm_epochs = 10000
-
-    test_data = load_data2(list_batch[-1])
-    test_label = list_labels[-1]
-
-    correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct, 'float'))
-
-    with tf.Session() as sess:
-        sess.run(tf.initialize_all_variables())
-        saver = tf.train.Saver()
-    # with tf.Session() as sess:
-    #    saver = tf.train.Saver()
-    #    saver.restore(sess, "model_train/model.ckpt")
-
-        total_runs = 0
-
-        for epoch in range(hm_epochs):
-            logger.info('epoch: %s' % epoch)
-            epoch_loss = 0
-            successful_runs = 0
-            list_prev = []
-            tmp = list_batch[:-1]
-            random.shuffle(tmp)
-            list_batch = tmp + [list_batch[-1]]
-            for i, batch in enumerate(list_batch[:-1]):
-                total_runs += 1
-                successful_runs += len(batch)
-                logger.debug('batch: {}, batch_size: {}'.format(i, len(batch)))
-                try:
-                    X = load_data2(batch)
-                    Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
-                    # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
-                    _, c, prev = sess.run([optimizer, cost, prev_layer], feed_dict={x: X, y: Y, keep_prob: 1})
-                    list_prev += [prev[j] for j in range(len(batch))]
-                    epoch_loss += c
-                    successful_runs += len(batch)
-
-                except Exception as e:
-                    logger.info(str(e))
-                if i % 10 == 0:
-                    logger.info('batch loss: %s %s' % (i, epoch_loss / successful_runs))
-
-            clf = LogisticRegression(C=0.1, random_state=0)
-            scores = cross_val_score(clf, list_prev, labels[:len(list_prev)], cv=5, scoring='roc_auc', n_jobs=-1)
-            logger.info('auc score: %s' % (scores.mean()))
-            scores = cross_val_score(clf, list_prev, labels[:len(list_prev)], cv=5, scoring='neg_log_loss', n_jobs=-1)
-            logger.info('logloss score: %s' % (- scores.mean()))
-            test_loss = 0
-            test_num = 0
-            try:
-                X = load_data2(list_batch[-1])
-                Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
-                # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
-
-                for j in range(len(Y)):
-                    c = sess.run(cost, feed_dict={x: X[j], y: Y[j], keep_prob: 1.})
-                    test_loss += c
-                    test_num += 1
-            except Exception as e:
-                logger.info(str(e))
-            logger.info('test loss: %s' % (test_loss / test_num))
-
-            save_path = saver.save(sess, "model0311_range900/model.ckpt", global_step=epoch)
-            logger.info("model saved %s" % save_path)
 
 
 if __name__ == '__main__':
