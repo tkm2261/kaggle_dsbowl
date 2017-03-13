@@ -7,7 +7,8 @@ import random
 from multiprocessing import Pool
 from scipy import ndimage as nd
 
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.linear_model import LogisticRegression
 
 random.seed(0)
 
@@ -24,7 +25,7 @@ from logging import getLogger
 
 logger = getLogger(__name__)
 
-IMG_SIZE = (512, 512, 200)
+IMG_SIZE = (200, 512, 512)
 
 N_CLASSES = 2
 BATCH_SIZE = 10
@@ -60,21 +61,34 @@ def load_data():
     logger.info("image num: %s".format(len(images)))
     return np.array(images), labels
 
+from skimage.transform import rotate
+
 
 def load_data2(batch):
+    """
+    p = Pool(len(batch))
+    ret = p.map(_load_data, batch)
+    p.close()
+    p.join()
+    """
     return [_load_data(p) for p in batch]
 
 
 def _load_data(patient_id):
-
     with gzip.open(FEATURE_FOLDER + patient_id + '.pkl.gz', 'rb') as f:
         img = pickle.load(f)
         # img = nd.interpolation.zoom(img, [float(IMG_SIZE[i]) / img.shape[i] for i in range(3)])
         # logger.debug('{} img size] {}'.format(patient_id, img.shape))
+    """
+    if random.random() >= 0.5:
+        img = np.array([rotate(im, -10) for im in img]).astype(np.int8)
+    if random.random() >= 0.5:
+        img = rotate(img, -10).astype(np.int8)
+    """
     return img
 
 
-FC_SIZE = 1024
+FC_SIZE = 126  # 1024
 DTYPE = tf.float32
 
 
@@ -86,37 +100,45 @@ def _bias_variable(name, shape):
     return tf.get_variable(name, shape, DTYPE, tf.constant_initializer(0.1, dtype=DTYPE))
 
 
-def convolutional_neural_network(x, keep_prob):
+def convolutional_neural_network(x, keep_prob, is_train=True):
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
 
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
-        out_filters = 16
+        out_filters = 8
         kernel = _weight_variable('weights', [5, 10, 10, in_filters, out_filters])
-        conv = tf.nn.conv3d(prev_layer, kernel, [1, 1, 3, 3, 1], padding='SAME')
+        conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
         conv1 = tf.nn.relu(bias, name=scope.name)
+        h2 = tf.contrib.layers.batch_norm(conv1,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
 
-        prev_layer = conv1
+        prev_layer = h2
         in_filters = out_filters
 
-    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 1, 3, 3, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
+    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 2, 3, 3, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
     norm1 = pool1  # tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta = 0.75, name='norm1')
 
     prev_layer = norm1
 
     with tf.variable_scope('conv2') as scope:
-        out_filters = 32
+        out_filters = 4
         kernel = _weight_variable('weights', [2, 5, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
         conv2 = tf.nn.relu(bias, name=scope.name)
+        h2 = tf.contrib.layers.batch_norm(conv2,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
 
-        prev_layer = conv2
+        prev_layer = h2
         in_filters = out_filters
 
     # normalize prev_layer here
@@ -151,16 +173,19 @@ def convolutional_neural_network(x, keep_prob):
 
     # normalize prev_layer here
     prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
-    """
 
-    """
     with tf.variable_scope('local3') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
         weights = _weight_variable('weights', [dim, FC_SIZE])
         biases = _bias_variable('biases', [FC_SIZE])
-        local3 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
 
+        h1 = tf.matmul(prev_layer_flat, weights) + biases
+        h2 = tf.contrib.layers.batch_norm(h1,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
+        local3 = tf.nn.relu(h2, name=scope.name)
         local3 = tf.nn.dropout(local3, keep_prob)
 
     prev_layer = local3
@@ -170,13 +195,18 @@ def convolutional_neural_network(x, keep_prob):
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
         weights = _weight_variable('weights', [dim, FC_SIZE])
         biases = _bias_variable('biases', [FC_SIZE])
-        local4 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
+        h1 = tf.matmul(prev_layer_flat, weights) + biases
+        h2 = tf.contrib.layers.batch_norm(h1,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
+        local4 = tf.nn.relu(h2, name=scope.name)
         local4 = tf.nn.dropout(local4, keep_prob)
     prev_layer = local4
 
     with tf.variable_scope('softmax_linear') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
-
+        # prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
         weights = _weight_variable('weights', [dim, N_CLASSES])
         biases = _bias_variable('biases', [N_CLASSES])
         softmax_linear = tf.add(tf.matmul(prev_layer, weights), biases, name=scope.name)
@@ -185,8 +215,8 @@ def convolutional_neural_network(x, keep_prob):
 
 
 def train_neural_network():
-    x = tf.placeholder('float')
-    y = tf.placeholder('float')
+    x = tf.placeholder(tf.float32)
+    y = tf.placeholder(tf.float32)
     keep_prob = tf.placeholder(tf.float32)
 
     list_batch = _list_batch
@@ -217,6 +247,7 @@ def train_neural_network():
             logger.info('epoch: %s' % epoch)
             epoch_loss = 0
             successful_runs = 0
+            list_prev = []
             tmp = list_batch[:-1]
             random.shuffle(tmp)
             list_batch = tmp + [list_batch[-1]]
@@ -228,8 +259,8 @@ def train_neural_network():
                     X = load_data2(batch)
                     Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
                     # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
-
-                    _, c = sess.run([optimizer, cost], feed_dict={x: X, y: Y, keep_prob: 0.8})
+                    _, c, prev = sess.run([optimizer, cost, prev_layer], feed_dict={x: X, y: Y, keep_prob: 1})
+                    list_prev += [prev[j] for j in range(len(batch))]
                     epoch_loss += c
                     successful_runs += len(batch)
 
@@ -238,6 +269,11 @@ def train_neural_network():
                 if i % 10 == 0:
                     logger.info('batch loss: %s %s' % (i, epoch_loss / successful_runs))
 
+            clf = LogisticRegression(C=0.1, random_state=0)
+            scores = cross_val_score(clf, list_prev, labels[:len(list_prev)], cv=5, scoring='roc_auc', n_jobs=-1)
+            logger.info('auc score: %s' % (scores.mean()))
+            scores = cross_val_score(clf, list_prev, labels[:len(list_prev)], cv=5, scoring='neg_log_loss', n_jobs=-1)
+            logger.info('logloss score: %s' % (- scores.mean()))
             test_loss = 0
             test_num = 0
             try:

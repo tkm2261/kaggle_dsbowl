@@ -8,6 +8,7 @@ from multiprocessing import Pool
 from scipy import ndimage as nd
 
 from sklearn.model_selection import StratifiedKFold
+from sklearn.linear_model import LogisticRegression
 
 random.seed(0)
 
@@ -222,6 +223,7 @@ def train_neural_network():
 
             test_loss = 0
             test_num = 0
+            list_prev = []
             try:
                 for folder in LIST_FEATURES:
                     batch = list_batch[-1]
@@ -229,7 +231,8 @@ def train_neural_network():
                     Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
                     # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
 
-                    _, c = sess.run([optimizer, cost], feed_dict={x: X, y: Y, keep_prob: 0.8})
+                    _, c, prev = sess.run([optimizer, cost, prev_layer], feed_dict={x: X, y: Y, keep_prob: 0.8})
+                    list_prev += [prev[i] for i in range(len(batch))]
                     test_loss += c
                     test_num += len(batch)
             except Exception as e:
