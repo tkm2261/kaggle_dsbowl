@@ -91,6 +91,9 @@ def train_neural_network():
             epoch_loss = 0
             successful_runs = 0
             list_prev = []
+            list_ord_batch = []
+            list_ord_label = []
+
             tmp = list(range(len(list_batch)))
             random.shuffle(tmp)
 
@@ -105,6 +108,9 @@ def train_neural_network():
                     # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
                     _, c, prev = sess.run([optimizer, cost, prev_layer], feed_dict={x: X, y: Y, keep_prob: DROP_RATE})
                     list_prev += [prev[j] for j in range(len(batch))]
+                    list_ord_batch += batch
+                    list_ord_label += list_labels[i]
+
                     epoch_loss += c
                     successful_runs += len(batch)
 
@@ -114,14 +120,14 @@ def train_neural_network():
                     logger.info('batch loss: %s %s' % (cnt, epoch_loss / successful_runs))
 
             clf = LogisticRegression(C=0.1, random_state=0)
-            scores = cross_val_score(clf, list_prev, labels[:len(list_prev)], cv=5, scoring='roc_auc', n_jobs=-1)
+            scores = cross_val_score(clf, list_prev, list_ord_label, cv=5, scoring='roc_auc', n_jobs=-1)
             logger.info('auc score: %s' % (scores.mean()))
-            scores = cross_val_score(clf, list_prev, labels[:len(list_prev)], cv=5, scoring='neg_log_loss', n_jobs=-1)
+            scores = cross_val_score(clf, list_prev, list_ord_label, cv=5, scoring='neg_log_loss', n_jobs=-1)
             logger.info('logloss score: %s' % (- scores.mean()))
 
             df_prev = pd.DataFrame(list_prev)
-            df_prev['id'] = list_patient_id[:len(list_prev)]
-            df_prev['cancer'] = labels[:len(list_prev)]
+            df_prev['id'] = list_ord_batch
+            df_prev['cancer'] = list_ord_label
             df_prev.to_csv(MODEL_FOLDER + '_%s.csv' % epoch, index=False)
             logger.info('prev data: {}'.format(df_prev.shape))
 
