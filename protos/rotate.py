@@ -15,7 +15,7 @@ STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
 DATA_PATH = '../features/'
 FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary_resize/'
-FEATURE_FOLDER_OUT = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_yoko_plus10/'
+FEATURE_FOLDER_OUT = DATA_PATH + 'features_20170303_lung_binary_resize_rotate_yoko_minus10/'
 #FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
 
@@ -44,8 +44,8 @@ def _pros_data(_patient_id):
 
     with gzip.open(FEATURE_FOLDER + patient_id + '.pkl.gz', 'rb') as f:
         img = pickle.load(f)
-    #img = np.array([rotate(im, -10) for im in img])
-    img = rotate(img, -10).astype(np.int8)
+    img = np.array([rotate(im, -10) for im in img])
+    #img = rotate(img, -10).astype(np.int8)
 
     with gzip.open(FEATURE_FOLDER_OUT + patient_id + '.pkl.gz', 'wb') as f:
         pickle.dump(img, f, -1)

@@ -7,7 +7,12 @@ import random
 from multiprocessing import Pool
 from scipy import ndimage as nd
 
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.linear_model import LogisticRegression
+
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 random.seed(0)
 
@@ -16,113 +21,150 @@ STAGE1_FOLDER = DATA_PATH + 'stage1/'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
 DATA_PATH = '../features/'
-FEATURE_FOLDER = DATA_PATH + 'features_20170303_lung_binary_resize/'
+FEATURE_FOLDER = DATA_PATH + 'features_20170311_range900_1154_resize/'
+
+DATA_PATH = '../../data/features/'
+FEATURE_FOLDER_TP = DATA_PATH + 'features_20170311_range900_1154_resize_t_p10/'
+FEATURE_FOLDER_TN = DATA_PATH + 'features_20170311_range900_1154_resize_t_m10/'
+FEATURE_FOLDER_YP = DATA_PATH + 'features_20170311_range900_1154_resize_y_p10/'
+FEATURE_FOLDER_YN = DATA_PATH + 'features_20170311_range900_1154_resize_y_m10/'
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
+LIST_FEATURE_FOLDER = [FEATURE_FOLDER, FEATURE_FOLDER_TP, FEATURE_FOLDER_TN, FEATURE_FOLDER_YP, FEATURE_FOLDER_YN]
 
-from logging import getLogger
 
-logger = getLogger(__name__)
-
-IMG_SIZE = (512, 512, 200)
+IMG_SIZE = (200, 512, 512)
 
 N_CLASSES = 2
-BATCH_SIZE = 10
+BATCH_SIZE = 12
+DROP_RATE = 0.5
+HM_EPOCHS = 10000
+
+MODEL_FOLDER = "model0311_range900/"
+
+FC_SIZE = 64  # 1024
+DTYPE = tf.float32
+
 
 df = pd.read_csv(STAGE1_LABELS)
 list_patient_id = df['id'].tolist()
 labels = df['cancer'].tolist()
-keep_prob = tf.placeholder(tf.float32)
 
 
-def split_batch(list_data, batch_size):
-    ret = []
-    for i in range(int(len(list_data) / batch_size) + 1):
-        from_idx = i * batch_size
-        next_idx = from_idx + batch_size if from_idx + batch_size <= len(list_data) else len(list_data)
+def train_neural_network():
+    x = tf.placeholder(DTYPE)
+    y = tf.placeholder(DTYPE)
+    keep_prob = tf.placeholder(DTYPE)
 
-        if from_idx >= next_idx:
-            break
+    list_batch = split_batch(list_patient_id, BATCH_SIZE)
+    list_labels = split_batch(labels, BATCH_SIZE)
 
-        ret.append(list_data[from_idx:next_idx])
-    return ret
+    prediction, prev_layer = convolutional_neural_network(x, keep_prob)
+    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
+    optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
 
-_list_batch = split_batch(list_patient_id, BATCH_SIZE)
-_list_labels = split_batch(labels, BATCH_SIZE)
+    with tf.Session() as sess:
+        if 1:
+            sess.run(tf.initialize_all_variables())
+            saver = tf.train.Saver()
+        else:
+            saver = tf.train.Saver()
+            saver.restore(sess, "model_train/model.ckpt")
+
+        total_runs = 0
+
+        for epoch in range(HM_EPOCHS):
+            logger.info('epoch: %s' % epoch)
+            epoch_loss = 0
+            successful_runs = 0
+            list_prev = []
+            list_ord_batch = []
+            list_ord_label = []
+
+            tmp = list(range(len(list_batch)))
+            random.shuffle(tmp)
+
+            for cnt, i in enumerate(tmp):
+                batch = list_batch[i]
+                total_runs += 1
+                successful_runs += len(batch)
+                logger.debug('batch: {}, batch_size: {}'.format(i, len(batch)))
+                try:
+                    X = load_data2(batch)
+                    Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
+                    # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
+                    _, c, prev = sess.run([optimizer, cost, prev_layer], feed_dict={x: X, y: Y, keep_prob: DROP_RATE})
+                    list_prev += [prev[j] for j in range(len(batch))]
+                    list_ord_batch += batch
+                    list_ord_label += list_labels[i]
+
+                    epoch_loss += c
+                    successful_runs += len(batch)
+
+                except Exception as e:
+                    logger.info(str(e))
+                if cnt % 10 == 0:
+                    logger.info('batch loss: %s %s' % (cnt, epoch_loss / successful_runs))
+
+            clf = LogisticRegression(C=0.1, random_state=0)
+            scores = cross_val_score(clf, list_prev, list_ord_label, cv=5, scoring='roc_auc', n_jobs=-1)
+            logger.info('auc score: %s' % (scores.mean()))
+            scores = cross_val_score(clf, list_prev, list_ord_label, cv=5, scoring='neg_log_loss', n_jobs=-1)
+            logger.info('logloss score: %s' % (- scores.mean()))
+
+            df_prev = pd.DataFrame(list_prev)
+            df_prev['id'] = list_ord_batch
+            df_prev['cancer'] = list_ord_label
+            df_prev.to_csv(MODEL_FOLDER + 'prev_%s.csv' % epoch, index=False)
+            logger.info('prev data: {}'.format(df_prev.shape))
+
+            save_path = saver.save(sess, MODEL_FOLDER + "model.ckpt", global_step=epoch)
+            logger.info("model saved %s" % save_path)
 
 
-def load_data():
-    df = pd.read_csv(STAGE1_LABELS)
-    labels = df['cancer'].tolist()
-    p = Pool()
-    images = p.map(_load_data, df['id'].tolist())
-    p.close()
-    p.join()
-    logger.info("image num: %s".format(len(images)))
-    return np.array(images), labels
-
-
-def load_data2(batch):
-    return [_load_data(p) for p in batch]
-
-
-def _load_data(patient_id):
-
-    with gzip.open(FEATURE_FOLDER + patient_id + '.pkl.gz', 'rb') as f:
-        img = pickle.load(f)
-        # img = nd.interpolation.zoom(img, [float(IMG_SIZE[i]) / img.shape[i] for i in range(3)])
-        # logger.debug('{} img size] {}'.format(patient_id, img.shape))
-    return img
-
-
-FC_SIZE = 1024
-DTYPE = tf.float32
-
-
-def _weight_variable(name, shape):
-    return tf.get_variable(name, shape, DTYPE, tf.truncated_normal_initializer(stddev=0.1))
-
-
-def _bias_variable(name, shape):
-    return tf.get_variable(name, shape, DTYPE, tf.constant_initializer(0.1, dtype=DTYPE))
-
-
-def convolutional_neural_network(x):
+def convolutional_neural_network(x, keep_prob, is_train=True):
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
 
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
-        out_filters = 16
-        kernel = _weight_variable('weights', [10, 10, 5, in_filters, out_filters])
-        conv = tf.nn.conv3d(prev_layer, kernel, [1, 5, 5, 5, 1], padding='SAME')
+        out_filters = 1
+        kernel = _weight_variable('weights', [5, 10, 10, in_filters, out_filters])
+        conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
-        conv1 = tf.nn.relu(bias, name=scope.name)
+        h2 = tf.contrib.layers.batch_norm(bias,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
 
+        conv1 = tf.nn.relu(h2, name=scope.name)
         prev_layer = conv1
         in_filters = out_filters
 
-    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
+    pool1 = tf.nn.max_pool3d(prev_layer, ksize=[1, 2, 3, 3, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
     norm1 = pool1  # tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta = 0.75, name='norm1')
 
     prev_layer = norm1
 
     with tf.variable_scope('conv2') as scope:
-        out_filters = 32
-        kernel = _weight_variable('weights', [5, 5, 5, in_filters, out_filters])
-        conv = tf.nn.conv3d(prev_layer, kernel, [1, 3, 3, 3, 1], padding='SAME')
+        out_filters = 1
+        kernel = _weight_variable('weights', [2, 5, 5, in_filters, out_filters])
+        conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
-        conv2 = tf.nn.relu(bias, name=scope.name)
-
+        h2 = tf.contrib.layers.batch_norm(bias,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
+        conv2 = tf.nn.relu(h2, name=scope.name)
         prev_layer = conv2
         in_filters = out_filters
 
     # normalize prev_layer here
-    prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
-
+    prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 1, 3, 3, 1], strides=[1, 1, 2, 2, 1], padding='SAME')
+    """
     with tf.variable_scope('conv3_1') as scope:
         out_filters = 64
         kernel = _weight_variable('weights', [5, 5, 5, in_filters, out_filters])
@@ -152,14 +194,19 @@ def convolutional_neural_network(x):
 
     # normalize prev_layer here
     prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 3, 3, 3, 1], strides=[1, 2, 2, 2, 1], padding='SAME')
-    """
+
     with tf.variable_scope('local3') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
         weights = _weight_variable('weights', [dim, FC_SIZE])
         biases = _bias_variable('biases', [FC_SIZE])
-        local3 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
 
+        h1 = tf.matmul(prev_layer_flat, weights) + biases
+        h2 = tf.contrib.layers.batch_norm(h1,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
+        local3 = tf.nn.relu(h2, name=scope.name)
         local3 = tf.nn.dropout(local3, keep_prob)
 
     prev_layer = local3
@@ -169,102 +216,63 @@ def convolutional_neural_network(x):
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
         weights = _weight_variable('weights', [dim, FC_SIZE])
         biases = _bias_variable('biases', [FC_SIZE])
-        local4 = tf.nn.relu(tf.matmul(prev_layer_flat, weights) + biases, name=scope.name)
+        h1 = tf.matmul(prev_layer_flat, weights) + biases
+        h2 = tf.contrib.layers.batch_norm(h1,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
+        local4 = tf.nn.relu(h2, name=scope.name)
         local4 = tf.nn.dropout(local4, keep_prob)
     prev_layer = local4
 
     with tf.variable_scope('softmax_linear') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
+        # prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
         weights = _weight_variable('weights', [dim, N_CLASSES])
         biases = _bias_variable('biases', [N_CLASSES])
-        softmax_linear = tf.add(tf.matmul(prev_layer, weights), biases, name=scope.name)
+        h1 = tf.matmul(prev_layer, weights)
 
-    return softmax_linear
+        softmax_linear = tf.add(h1, biases, name=scope.name)
+
+    return softmax_linear, prev_layer
 
 
-def train_neural_network():
-    x = tf.placeholder('float')
-    y = tf.placeholder('float')
+def split_batch(list_data, batch_size):
+    ret = []
+    for i in range(int(len(list_data) / batch_size) + 1):
+        from_idx = i * batch_size
+        next_idx = from_idx + batch_size if from_idx + batch_size <= len(list_data) else len(list_data)
 
-    list_batch = _list_batch
-    list_labels = _list_labels
+        if from_idx >= next_idx:
+            break
 
-    prediction = convolutional_neural_network(x)
-    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
-    optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
+        ret.append(list_data[from_idx:next_idx])
+    return ret
 
-    hm_epochs = 10000
 
-    test_data = load_data2(list_batch[-1])
-    test_label = list_labels[-1]
+def load_data2(batch):
+    """
+    p = Pool(len(batch))
+    ret = p.map(_load_data, batch)
+    p.close()
+    p.join()
+    """
+    return [_load_data(p) for p in batch]
 
-    correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct, 'float'))
 
-    with tf.Session() as sess:
-        sess.run(tf.initialize_all_variables())
-        saver = tf.train.Saver()
-    # with tf.Session() as sess:
-    #    saver = tf.train.Saver()
-    #    saver.restore(sess, "model_train/model.ckpt")
+def _load_data(patient_id):
+    path = random.choice(LIST_FEATURE_FOLDER)
+    with gzip.open(path + patient_id + '.pkl.gz', 'rb') as f:
+        img = pickle.load(f)
+    return img
 
-        total_runs = 0
 
-        for epoch in range(hm_epochs):
-            logger.info('epoch: %s' % epoch)
-            epoch_loss = 0
-            successful_runs = 0
-            tmp = list_batch[:-1]
-            random.shuffle(tmp)
-            list_batch = tmp + [list_batch[-1]]
-            for i, batch in enumerate(list_batch[:-1]):
-                total_runs += 1
-                successful_runs += len(batch)
-                logger.debug('batch: {}, batch_size: {}'.format(i, len(batch)))
-                try:
-                    X = load_data2(batch)
-                    Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
-                    # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
+def _weight_variable(name, shape):
+    return tf.get_variable(name, shape, DTYPE, tf.truncated_normal_initializer(stddev=0.1))
 
-                    _, c = sess.run([optimizer, cost], feed_dict={x: X, y: Y, keep_prob: 0.8})
-                    epoch_loss += c
-                    successful_runs += len(batch)
 
-                except Exception as e:
-                    logger.info(str(e))
-                if i % 1 == 0:
-                    logger.info('batch loss: %s %s' % (i, epoch_loss / successful_runs))
-
-            test_loss = 0
-            test_num = 0
-            try:
-                X = load_data2(list_batch[-1])
-                Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
-                # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
-
-                for j in range(len(Y)):
-                    c = sess.run(cost, feed_dict={x: X[j], y: Y[j], keep_prob: 1.})
-                    test_loss += c
-                    test_num += 1
-            except Exception as e:
-                logger.info(str(e))
-            logger.info('test loss: %s' % (test_loss / test_num))
-
-            save_path = saver.save(sess, "model0307_tune/model.ckpt", global_step=epoch)
-            logger.info("model saved %s" % save_path)
-
-    X = load_data2(list_batch[-1])
-    Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[-1]]
-
-    for j in range(len(Y)):
-        try:
-            _, c = sess.run([optimizer, cost], feed_dict={x: X[j], y: Y[j], keep_prob: 0.8})
-        except Exception as e:
-            logger.info(str(e))
-    save_path = saver.save(sess, "model.ckpt")
-    logger.info("model saved %s" % save_path)
-
-    logger.info('Done. Finishing accuracy:')
+def _bias_variable(name, shape):
+    return tf.get_variable(name, shape, DTYPE, tf.constant_initializer(0.1, dtype=DTYPE))
 
 
 if __name__ == '__main__':
@@ -283,8 +291,4 @@ if __name__ == '__main__':
     logger.setLevel('INFO')
     logger.addHandler(handler)
 
-    # data, labels = load_data()
-    # If you are working with the basic sample data, use maybe 2 instead of
-    # 100 here... you don't have enough data to really do this
-    # Run this locally:
     train_neural_network()
