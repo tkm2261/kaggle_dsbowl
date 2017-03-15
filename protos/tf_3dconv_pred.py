@@ -40,8 +40,9 @@ prediction, prev_layer = convolutional_neural_network(x, keep_prob, is_train=Fal
 
 
 def train_neural_network(epoch):
-
-    with tf.Session() as sess:
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    with tf.Session(config=config) as sess:
         # 変数の読み込み
         saver = tf.train.Saver()
 

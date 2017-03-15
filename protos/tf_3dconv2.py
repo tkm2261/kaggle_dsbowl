@@ -21,9 +21,10 @@ STAGE1_FOLDER = DATA_PATH + 'stage1/'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
 DATA_PATH = '../features/'
-FEATURE_FOLDER = DATA_PATH + 'features_20170311_range900_1154_resize/'
+
 
 DATA_PATH = '../../data/features/'
+FEATURE_FOLDER = DATA_PATH + 'features_20170311_range900_1154_resize/'
 FEATURE_FOLDER_TP = DATA_PATH + 'features_20170311_range900_1154_resize_t_p10/'
 FEATURE_FOLDER_TN = DATA_PATH + 'features_20170311_range900_1154_resize_t_m10/'
 FEATURE_FOLDER_YP = DATA_PATH + 'features_20170311_range900_1154_resize_y_p10/'
@@ -64,16 +65,16 @@ def train_neural_network():
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
 
     with tf.Session() as sess:
-        if 1:
+        if 0:
             sess.run(tf.initialize_all_variables())
             saver = tf.train.Saver()
         else:
             saver = tf.train.Saver()
-            saver.restore(sess, "model_train/model.ckpt")
+            saver.restore(sess, MODEL_FOLDER + "model.ckpt-29")
 
         total_runs = 0
 
-        for epoch in range(HM_EPOCHS):
+        for epoch in range(30, HM_EPOCHS):
             logger.info('epoch: %s' % epoch)
             epoch_loss = 0
             successful_runs = 0
