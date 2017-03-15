@@ -33,7 +33,7 @@ def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 
-def train_neural_network():
+def train_neural_network(epoch):
     x = tf.placeholder('float')
     #y = tf.placeholder('float')
     keep_prob = tf.placeholder(tf.float32)
@@ -44,7 +44,7 @@ def train_neural_network():
         # 変数の読み込み
         saver = tf.train.Saver()
 
-        saver.restore(sess, MODEL_FOLDER + 'model.ckpt-%s' % MODEL_EPOC)
+        saver.restore(sess, MODEL_FOLDER + 'model.ckpt-%s' % epoch)
         save_path = saver.save(sess, MODEL_FOLDER + "model_pred.ckpt")
         logger.info("model saved %s" % save_path)
 
@@ -70,7 +70,7 @@ def train_neural_network():
         df_prev = pd.DataFrame(list_prev)
         df_prev['id'] = df['id'].tolist()
         df_prev['cancer'] = None
-        df_prev.to_csv(MODEL_FOLDER + 'prev_pred.csv', index=False)
+        df_prev.to_csv(MODEL_FOLDER + 'prev_pred_%s.csv' % epoch, index=False)
 
 
 if __name__ == '__main__':
@@ -88,5 +88,5 @@ if __name__ == '__main__':
     handler.setFormatter(log_fmt)
     logger.setLevel('INFO')
     logger.addHandler(handler)
-
-    train_neural_network()
+    for i in range(30, 1000):
+        train_neural_network(i)
