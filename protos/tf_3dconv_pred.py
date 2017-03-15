@@ -32,13 +32,14 @@ def _load_data(patient_id):
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
+x = tf.placeholder('float')
+#y = tf.placeholder('float')
+keep_prob = tf.placeholder(tf.float32)
+
+prediction, prev_layer = convolutional_neural_network(x, keep_prob, is_train=False)
+
 
 def train_neural_network(epoch):
-    x = tf.placeholder('float')
-    #y = tf.placeholder('float')
-    keep_prob = tf.placeholder(tf.float32)
-
-    prediction, prev_layer = convolutional_neural_network(x, keep_prob, is_train=False)
 
     with tf.Session() as sess:
         # 変数の読み込み
