@@ -21,28 +21,30 @@ STAGE1_FOLDER = DATA_PATH + 'stage1/'
 STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 
 DATA_PATH = '../features/'
-FEATURE_FOLDER = DATA_PATH + 'features_20170311_range900_1154_resize/'
 
-#DATA_PATH = '../../data/features/'
-FEATURE_FOLDER_TP = DATA_PATH + 'features_20170311_range900_1154_resize_t_p10/'
-FEATURE_FOLDER_TN = DATA_PATH + 'features_20170311_range900_1154_resize_t_m10/'
-FEATURE_FOLDER_YP = DATA_PATH + 'features_20170311_range900_1154_resize_y_p10/'
-FEATURE_FOLDER_YN = DATA_PATH + 'features_20170311_range900_1154_resize_y_m10/'
+
+DATA_PATH = '../../data/features/'
+FEATURE_FOLDER = DATA_PATH + 'features_20170314_range900_1154_fil_resize/'
+FEATURE_FOLDER_TP = DATA_PATH + 'features_20170314_range900_1154_fil_rotate_y_p10/'
+FEATURE_FOLDER_TN = DATA_PATH + 'features_20170314_range900_1154_fil_rotate_y_m10/'
+FEATURE_FOLDER_YP = DATA_PATH + 'features_20170314_range900_1154_fil_rotate_t_p10/'
+FEATURE_FOLDER_YN = DATA_PATH + 'features_20170314_range900_1154_fil_rotate_t_m10/'
+
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
-LIST_FEATURE_FOLDER = [FEATURE_FOLDER FEATURE_FOLDER_TP, FEATURE_FOLDER_TN, FEATURE_FOLDER_YP, FEATURE_FOLDER_YN]
+LIST_FEATURE_FOLDER = [FEATURE_FOLDER, FEATURE_FOLDER_TP, FEATURE_FOLDER_TN, FEATURE_FOLDER_YP, FEATURE_FOLDER_YN]
 
 
 IMG_SIZE = (200, 512, 512)
 
 N_CLASSES = 2
-BATCH_SIZE = 8
+BATCH_SIZE = 10
 DROP_RATE = 0.5
 HM_EPOCHS = 10000
 
 MODEL_FOLDER = "model0315_tune/"
 
-FC_SIZE = 64
+FC_SIZE = 32
 DTYPE = tf.float32
 
 
@@ -51,8 +53,8 @@ df = pd.read_csv(STAGE1_LABELS)
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=871)
 for train_idx, test_idx in cv.split(df['cancer'].tolist(), df['cancer'].tolist()):
     df_train = df.ix[train_idx]
-    df_test = df.ix[test_idx]    
-    
+    df_test = df.ix[test_idx]
+
 list_patient_id = df_train['id'].tolist()
 labels = df_train['cancer'].tolist()
 
@@ -70,7 +72,7 @@ def train_neural_network():
 
     list_test_batch = split_batch(list_test_patient_id, BATCH_SIZE)
     list_test_labels = split_batch(test_labels, BATCH_SIZE)
-    
+
     prediction, prev_layer = convolutional_neural_network(x, keep_prob, is_train)
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
@@ -102,7 +104,8 @@ def train_neural_network():
                     X = load_data2(batch)
                     Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
                     # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
-                    _, c, prev = sess.run([optimizer, cost, prev_layer], feed_dict={x: X, y: Y, keep_prob: DROP_RATE, is_train: True})
+                    _, c, prev = sess.run([optimizer, cost, prev_layer], feed_dict={
+                                          x: X, y: Y, keep_prob: DROP_RATE, is_train: True})
                     epoch_loss += c
                     successful_runs += len(batch)
 
@@ -121,7 +124,7 @@ def train_neural_network():
                     logger.debug('test batch: %s' % (i))
 
             clf = LogisticRegression(C=0.1, random_state=0)
-            
+
             scores = cross_val_score(clf, list_prev, test_labels, cv=5, scoring='roc_auc', n_jobs=-1)
             logger.info('auc score: %s' % (scores.mean()))
             scores = cross_val_score(clf, list_prev, test_labels, cv=5, scoring='neg_log_loss', n_jobs=-1)
@@ -144,7 +147,7 @@ def convolutional_neural_network(x, keep_prob, is_train):
 
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
-        out_filters = 1
+        out_filters = 2
         kernel = _weight_variable('weights', [5, 10, 10, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
@@ -164,7 +167,7 @@ def convolutional_neural_network(x, keep_prob, is_train):
     prev_layer = norm1
 
     with tf.variable_scope('conv2') as scope:
-        out_filters = 1
+        out_filters = 4
         kernel = _weight_variable('weights', [2, 5, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
@@ -179,32 +182,47 @@ def convolutional_neural_network(x, keep_prob, is_train):
 
     # normalize prev_layer here
     prev_layer = tf.nn.max_pool3d(prev_layer, ksize=[1, 1, 3, 3, 1], strides=[1, 1, 2, 2, 1], padding='SAME')
-    """
+
     with tf.variable_scope('conv3_1') as scope:
-        out_filters = 64
+        out_filters = 8
         kernel = _weight_variable('weights', [5, 5, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 2, 2, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
-        prev_layer = tf.nn.relu(bias, name=scope.name)
+        h2 = tf.contrib.layers.batch_norm(bias,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
+
+        prev_layer = tf.nn.relu(h2, name=scope.name)
         in_filters = out_filters
 
     with tf.variable_scope('conv3_2') as scope:
-        out_filters = 64
+        out_filters = 8
         kernel = _weight_variable('weights', [5, 5, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 1, 1, 1, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
-        prev_layer = tf.nn.relu(bias, name=scope.name)
+        h2 = tf.contrib.layers.batch_norm(bias,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
+
+        prev_layer = tf.nn.relu(h2, name=scope.name)
         in_filters = out_filters
 
     with tf.variable_scope('conv3_3') as scope:
-        out_filters = 32
+        out_filters = 16
         kernel = _weight_variable('weights', [5, 5, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 1, 1, 1, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
-        prev_layer = tf.nn.relu(bias, name=scope.name)
+        h2 = tf.contrib.layers.batch_norm(bias,
+                                          center=True, scale=True,
+                                          is_training=is_train,
+                                          scope=scope.name)
+
+        prev_layer = tf.nn.relu(h2, name=scope.name)
         in_filters = out_filters
 
     # normalize prev_layer here
@@ -225,7 +243,7 @@ def convolutional_neural_network(x, keep_prob, is_train):
         local3 = tf.nn.dropout(local3, keep_prob)
 
     prev_layer = local3
-    """
+
     with tf.variable_scope('local4') as scope:
         dim = np.prod(prev_layer.get_shape().as_list()[1:])
         prev_layer_flat = tf.reshape(prev_layer, [-1, dim])
