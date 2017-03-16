@@ -15,7 +15,6 @@ STAGE1_SAMPLE_SUBMISSION = DATA_PATH + 'stage1_sample_submission.csv'
 from tf_3dconv2 import FEATURE_FOLDER, MODEL_FOLDER, DTYPE, BATCH_SIZE
 from tf_3dconv2 import convolutional_neural_network, split_batch
 
-BATCH_SIZE = 2
 from logging import getLogger
 
 logger = getLogger(__name__)
@@ -61,8 +60,7 @@ def train_neural_network(epoch):
             prev = sess.run(prev_layer, feed_dict={x: X, keep_prob: 1.})
             list_prev += [prev[j] for j in range(len(batch))]
             list_ord_batch += batch
-            list_ord_label += list_labels[i]
-
+            list_ord_label += list_labels[cnt]
             logger.info('{} batch: {}'.format(epoch, cnt))
         df_prev = pd.DataFrame(list_prev)
         df_prev['id'] = list_ord_batch
@@ -90,5 +88,5 @@ if __name__ == '__main__':
     # If you are working with the basic sample data, use maybe 2 instead of
     # 100 here... you don't have enough data to really do this
     # Run this locally:
-    for i in range(100):
+    for i in range(30, 100):
         train_neural_network(i)
