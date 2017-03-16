@@ -23,43 +23,55 @@ STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 DATA_PATH = '../features/'
 FEATURE_FOLDER = DATA_PATH + 'features_20170311_range900_1154_resize/'
 
-DATA_PATH = '../../data/features/'
+#DATA_PATH = '../../data/features/'
 FEATURE_FOLDER_TP = DATA_PATH + 'features_20170311_range900_1154_resize_t_p10/'
 FEATURE_FOLDER_TN = DATA_PATH + 'features_20170311_range900_1154_resize_t_m10/'
 FEATURE_FOLDER_YP = DATA_PATH + 'features_20170311_range900_1154_resize_y_p10/'
 FEATURE_FOLDER_YN = DATA_PATH + 'features_20170311_range900_1154_resize_y_m10/'
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
-LIST_FEATURE_FOLDER = [FEATURE_FOLDER, FEATURE_FOLDER_TP, FEATURE_FOLDER_TN, FEATURE_FOLDER_YP, FEATURE_FOLDER_YN]
+LIST_FEATURE_FOLDER = [FEATURE_FOLDER FEATURE_FOLDER_TP, FEATURE_FOLDER_TN, FEATURE_FOLDER_YP, FEATURE_FOLDER_YN]
 
 
 IMG_SIZE = (200, 512, 512)
 
 N_CLASSES = 2
-BATCH_SIZE = 12
+BATCH_SIZE = 8
 DROP_RATE = 0.5
 HM_EPOCHS = 10000
 
-MODEL_FOLDER = "model0311_range900/"
+MODEL_FOLDER = "model0315_tune/"
 
-FC_SIZE = 64  # 1024
+FC_SIZE = 64
 DTYPE = tf.float32
 
 
 df = pd.read_csv(STAGE1_LABELS)
-list_patient_id = df['id'].tolist()
-labels = df['cancer'].tolist()
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=871)
+for train_idx, test_idx in cv.split(df['cancer'].tolist(), df['cancer'].tolist()):
+    df_train = df.ix[train_idx]
+    df_test = df.ix[test_idx]    
+    
+list_patient_id = df_train['id'].tolist()
+labels = df_train['cancer'].tolist()
+
+list_test_patient_id = df_test['id'].tolist()
+test_labels = df_test['cancer'].tolist()
 
 
 def train_neural_network():
     x = tf.placeholder(DTYPE)
     y = tf.placeholder(DTYPE)
     keep_prob = tf.placeholder(DTYPE)
-
+    is_train = tf.placeholder(bool)
     list_batch = split_batch(list_patient_id, BATCH_SIZE)
     list_labels = split_batch(labels, BATCH_SIZE)
 
-    prediction, prev_layer = convolutional_neural_network(x, keep_prob)
+    list_test_batch = split_batch(list_test_patient_id, BATCH_SIZE)
+    list_test_labels = split_batch(test_labels, BATCH_SIZE)
+    
+    prediction, prev_layer = convolutional_neural_network(x, keep_prob, is_train)
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(cost)
 
@@ -69,17 +81,14 @@ def train_neural_network():
             saver = tf.train.Saver()
         else:
             saver = tf.train.Saver()
-            saver.restore(sess, "model_train/model.ckpt")
+            saver.restore(sess, MODEL_FOLDER + "model.ckpt-13")
 
         total_runs = 0
 
-        for epoch in range(HM_EPOCHS):
+        for epoch in range(0, HM_EPOCHS):
             logger.info('epoch: %s' % epoch)
             epoch_loss = 0
             successful_runs = 0
-            list_prev = []
-            list_ord_batch = []
-            list_ord_label = []
 
             tmp = list(range(len(list_batch)))
             random.shuffle(tmp)
@@ -93,11 +102,7 @@ def train_neural_network():
                     X = load_data2(batch)
                     Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_labels[i]]
                     # logger.info('batch: %s Accuracy:' % i, accuracy.eval({x: X, y: Y}))
-                    _, c, prev = sess.run([optimizer, cost, prev_layer], feed_dict={x: X, y: Y, keep_prob: DROP_RATE})
-                    list_prev += [prev[j] for j in range(len(batch))]
-                    list_ord_batch += batch
-                    list_ord_label += list_labels[i]
-
+                    _, c, prev = sess.run([optimizer, cost, prev_layer], feed_dict={x: X, y: Y, keep_prob: DROP_RATE, is_train: True})
                     epoch_loss += c
                     successful_runs += len(batch)
 
@@ -106,23 +111,33 @@ def train_neural_network():
                 if cnt % 10 == 0:
                     logger.info('batch loss: %s %s' % (cnt, epoch_loss / successful_runs))
 
-            clf = LogisticRegression(C=0.1, random_state=0)
-            scores = cross_val_score(clf, list_prev, list_ord_label, cv=5, scoring='roc_auc', n_jobs=-1)
-            logger.info('auc score: %s' % (scores.mean()))
-            scores = cross_val_score(clf, list_prev, list_ord_label, cv=5, scoring='neg_log_loss', n_jobs=-1)
-            logger.info('logloss score: %s' % (- scores.mean()))
+            list_prev = []
+            for i in range(len(list_test_batch)):
+                X = load_data2(list_test_batch[i])
+                Y = [[0, 1] if lb == 1 else [1, 0] for lb in list_test_labels[i]]
+                prev = sess.run(prev_layer, feed_dict={x: X, y: Y, keep_prob: 1., is_train: False})
+                list_prev += [prev[j] for j in range(len(list_test_batch[i]))]
+                if cnt % 10 == 0:
+                    logger.debug('test batch: %s' % (i))
 
+            clf = LogisticRegression(C=0.1, random_state=0)
+            
+            scores = cross_val_score(clf, list_prev, test_labels, cv=5, scoring='roc_auc', n_jobs=-1)
+            logger.info('auc score: %s' % (scores.mean()))
+            scores = cross_val_score(clf, list_prev, test_labels, cv=5, scoring='neg_log_loss', n_jobs=-1)
+            logger.info('logloss score: %s' % (- scores.mean()))
+            """
             df_prev = pd.DataFrame(list_prev)
-            df_prev['id'] = list_ord_batch
-            df_prev['cancer'] = list_ord_label
+            df_prev['id'] = list_test_batch
+            df_prev['cancer'] = list_test_label
             df_prev.to_csv(MODEL_FOLDER + 'prev_%s.csv' % epoch, index=False)
             logger.info('prev data: {}'.format(df_prev.shape))
-
+            """
             save_path = saver.save(sess, MODEL_FOLDER + "model.ckpt", global_step=epoch)
             logger.info("model saved %s" % save_path)
 
 
-def convolutional_neural_network(x, keep_prob, is_train=True):
+def convolutional_neural_network(x, keep_prob, is_train):
     x = tf.reshape(x, shape=[-1, IMG_SIZE[0], IMG_SIZE[1], IMG_SIZE[2], 1])
 
     prev_layer = x
