@@ -23,7 +23,7 @@ STAGE1_LABELS = DATA_PATH + 'stage1_labels.csv'
 DATA_PATH = '../features/'
 
 
-DATA_PATH = '../../data/features/'
+#DATA_PATH = '../../data/features/'
 FEATURE_FOLDER = DATA_PATH + 'features_20170314_range900_1154_fil_resize/'
 FEATURE_FOLDER_TP = DATA_PATH + 'features_20170314_range900_1154_fil_rotate_y_p10/'
 FEATURE_FOLDER_TN = DATA_PATH + 'features_20170314_range900_1154_fil_rotate_y_m10/'
@@ -32,17 +32,17 @@ FEATURE_FOLDER_YN = DATA_PATH + 'features_20170314_range900_1154_fil_rotate_t_m1
 
 # FEATURE_FOLDER_FILL = DATA_PATH + 'features_20170303_lung_binary_fill/'
 
-LIST_FEATURE_FOLDER = [FEATURE_FOLDER, FEATURE_FOLDER_TP, FEATURE_FOLDER_TN, FEATURE_FOLDER_YP, FEATURE_FOLDER_YN]
+LIST_FEATURE_FOLDER = [FEATURE_FOLDER] #, FEATURE_FOLDER_TP, FEATURE_FOLDER_TN, FEATURE_FOLDER_YP, FEATURE_FOLDER_YN]
 
 
 IMG_SIZE = (200, 512, 512)
 
 N_CLASSES = 2
-BATCH_SIZE = 10
+BATCH_SIZE = 5
 DROP_RATE = 0.5
 HM_EPOCHS = 10000
 
-MODEL_FOLDER = "model0315_tune/"
+MODEL_FOLDER = "model0316"
 
 FC_SIZE = 32
 DTYPE = tf.float32
@@ -148,7 +148,7 @@ def convolutional_neural_network(x, keep_prob, is_train):
     in_filters = 1
     with tf.variable_scope('conv1') as scope:
         out_filters = 2
-        kernel = _weight_variable('weights', [5, 10, 10, in_filters, out_filters])
+        kernel = _weight_variable('weights', [5, 5, 5, in_filters, out_filters])
         conv = tf.nn.conv3d(prev_layer, kernel, [1, 2, 3, 3, 1], padding='SAME')
         biases = _bias_variable('biases', [out_filters])
         bias = tf.nn.bias_add(conv, biases)
