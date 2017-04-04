@@ -1,5 +1,5 @@
 import os
-import tensorflow as tf
+#import tensorflow as tf
 import numpy as np
 import pandas as pd
 import gzip
@@ -41,20 +41,19 @@ def load_data():
 
 def _pros_data(_patient_id):
     patient_id = _patient_id.split('.')[0]
-    if os.path.exists(FEATURE_FOLDER_OUT + patient_id + '.pkl.gz'):
-        return
+    # if os.path.exists(FEATURE_FOLDER_OUT + patient_id + '.pkl.gz'):
+    #    return
 
     f = h5py.File(FEATURE_FOLDER + patient_id + '.hdf5')
     img = f['voxel'].value
-    logger.debug('{} img size] {}'.format(patient_id, img.shape))
+    orig_img = img.shape
 
     img = nd.interpolation.zoom(img, [float(IMG_SIZE[i]) / img.shape[i] for i in range(3)])
 
     with gzip.open(FEATURE_FOLDER_OUT + patient_id + '.pkl.gz', 'wb') as f:
         pickle.dump(img, f, -1)
 
-    logger.debug('{} img size] {}'.format(patient_id, img.shape))
-
+    logger.debug('{} img size] {} {}'.format(patient_id, orig_img, img.shape))
 
 if __name__ == '__main__':
     from logging import StreamHandler, DEBUG, Formatter, FileHandler
