@@ -23,7 +23,7 @@ from logging import getLogger
 
 logger = getLogger(__name__)
 
-IMG_SIZE = (200, 512, 512)
+IMG_SIZE = (512, 512, 200)
 
 N_CLASSES = 2
 
@@ -46,6 +46,8 @@ def _pros_data(_patient_id):
 
     f = h5py.File(FEATURE_FOLDER + patient_id + '.hdf5')
     img = f['voxel'].value
+    logger.debug('{} img size] {}'.format(patient_id, img.shape))
+
     img = nd.interpolation.zoom(img, [float(IMG_SIZE[i]) / img.shape[i] for i in range(3)])
 
     with gzip.open(FEATURE_FOLDER_OUT + patient_id + '.pkl.gz', 'wb') as f:
